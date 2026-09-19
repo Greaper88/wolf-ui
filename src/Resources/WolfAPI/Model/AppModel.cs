@@ -30,5 +30,7 @@ namespace WolfUI
         public Resources.WolfAPI.Runner? Runner {get;set;}
         [JsonInclude, JsonPropertyName("render_node")]
         public string? RenderNode {get;set;}
+        [JsonInclude, JsonPropertyName("gpu_auto_select")]
+        public bool? GpuAutoSelect {get;set;}
     }
 }

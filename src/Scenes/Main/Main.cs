@@ -46,11 +46,41 @@ public partial class Main : Control
 
 		WolfApi.Init();
 
+        var gpuTimer = new Timer { WaitTime = 5, OneShot = false, Autostart = true };
+        gpuTimer.Timeout += RefreshGpuStatus;
+        AddChild(gpuTimer);
+        RefreshGpuStatus();
+
 		SelfUpdateAsync();
 
 		Logger.LogInformation("This session's id: {0}", WolfApi.SessionId);
 	} 
 	
+
+    private bool _gpuStatusPending;
+
+    private async void RefreshGpuStatus()
+    {
+        if (_gpuStatusPending || !IsInsideTree()) return;
+        _gpuStatusPending = true;
+        try
+        {
+            var session = await WolfApi.GetSession();
+            if (!IsInstanceValid(this) || !IsInsideTree()) return;
+            var label = GetNode<Label>("Content/GpuStatus");
+            label.Visible = session?.Gpu is not null;
+            label.Text = session?.Gpu?.StatusText() ?? "";
+            label.TooltipText = label.Text;
+        }
+        catch (System.Exception e)
+        {
+            if (IsInstanceValid(this) && IsInsideTree())
+                GetNode<Label>("Content/GpuStatus").Visible = false;
+            Logger.LogDebug("GPU status unavailable: {0}", e.Message);
+        }
+        finally { _gpuStatusPending = false; }
+    }
+
 	/*
 	public void LoadTheme(string themeName)
 	{

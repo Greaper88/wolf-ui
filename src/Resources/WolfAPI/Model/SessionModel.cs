@@ -6,6 +6,8 @@ namespace Resources.WolfAPI;
 
 public class Session
 {
+    [JsonInclude, JsonPropertyName("gpu")]
+    public SessionGpu? Gpu {get;set;}
     [JsonInclude, JsonPropertyName("app_id")]
     public string? AppId {get;set;}
     [JsonInclude, JsonPropertyName("client_id")]
@@ -30,4 +32,37 @@ public class SessionsResponse
     public bool Success {get;set;}
     [JsonInclude, JsonPropertyName("sessions")]
     public List<Session>? Sessions {get;set;}
+}
+
+// Optional additive contract: older Wolf servers omit it and the status line stays hidden.
+[JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+public class SessionGpu
+{
+    [JsonInclude, JsonPropertyName("id")]
+    public string? Id {get;set;}
+    [JsonInclude, JsonPropertyName("name")]
+    public string? Name {get;set;}
+    [JsonInclude, JsonPropertyName("render_node")]
+    public string? RenderNode {get;set;}
+    [JsonInclude, JsonPropertyName("encoder_node")]
+    public string? EncoderNode {get;set;}
+    [JsonInclude, JsonPropertyName("vram_bytes")]
+    public ulong? VramBytes {get;set;}
+    [JsonInclude, JsonPropertyName("encoder_percent")]
+    public double? EncoderPercent {get;set;}
+    [JsonInclude, JsonPropertyName("projected_encoder_percent")]
+    public double? ProjectedEncoderPercent {get;set;}
+    [JsonInclude, JsonPropertyName("session_count_on_gpu")]
+    public int SessionCountOnGpu {get;set;}
+
+    [JsonInclude, JsonPropertyName("stream_error")]
+    public string? StreamError {get;set;}
+
+    public string StatusText()
+    {
+        if (!string.IsNullOrEmpty(StreamError)) return StreamError;
+        var vram = VramBytes.HasValue ? $"{VramBytes.Value / (1024.0 * 1024 * 1024):0.#} GiB VRAM" : "VRAM unknown";
+        var encoder = EncoderPercent.HasValue ? $"Encoder {EncoderPercent.Value:0.#}%" : "Encoder unknown";
+        return $"{Name ?? Id ?? "GPU"} · {vram} · {encoder} · Other Users on this GPU: {Math.Max(0, SessionCountOnGpu - 1)}";
+    }
 }

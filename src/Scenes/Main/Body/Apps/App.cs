@@ -52,14 +52,11 @@ public partial class App : MarginContainer, IRestorable<App>
 
 	private bool IsAlreadyRunning(Resources.WolfAPI.Lobby lobby)
 	{
-		//check if the App.Title is the same as the lobbies Name
-		if (lobby.Name == Title)
-			return true;
-		//check if this app uses the same folder as the lobby 
-		if (Runner?.Name is null || lobby.RunnerStateFolder == $"profile-data/{WolfApi.ActiveProfile.Id}/{Runner.Name}")
-			return true;
-
-		return false;
+		if (!lobby.MultiUser && lobby.StartedByProfileId != WolfApi.ActiveProfile.Id)
+			return false;
+		if (!string.IsNullOrEmpty(lobby.RunnerStateFolder) && Runner?.Name is not null)
+			return lobby.RunnerStateFolder == $"profile-data/{WolfApi.ActiveProfile.Id}/{Runner.Name}";
+		return lobby.Name == Title;
 	}
 
 	// Called when the node enters the scene tree for the first time.
@@ -365,8 +362,8 @@ public partial class App : MarginContainer, IRestorable<App>
 					Width = session.VideoWidth,
 					Height = session.VideoHeight,
 					RefreshRate = session.VideoRefreshRate,
-					RunnerRenderNode = RenderNode,
-					WaylandRenderNode = RenderNode,
+					RunnerRenderNode = session.Gpu?.RenderNode ?? RenderNode,
+					WaylandRenderNode = session.Gpu?.RenderNode ?? RenderNode,
 					VideoProducerBufferCaps = System.Environment.GetEnvironmentVariable("WOLF_VIDEO_BUFFER_CAPS") ?? ""
 				},
 				AudioSettings = new AudioSettings
@@ -378,19 +375,17 @@ public partial class App : MarginContainer, IRestorable<App>
 			lobbyId = await WolfApi.CreateLobby(lobby);
 		}
 
-		State = AppState.PLAYING;
-
-
 		if (lobbyId is not null)
 		{
 			var response = await WolfApi.JoinLobby(lobbyId, WolfApi.SessionId);
-			if (response?.Success == false)
+			if (response is null || !response.Success)
 			{
-				await QuestionDialogue.OpenDialogue("Lobby full", "The Lobby you tried joining is Full.", new Dictionary<string, bool>()
+				await QuestionDialogue.OpenDialogue("Could not enter app", response?.Error ?? "Wolf did not respond.", new Dictionary<string, bool>()
 				{
 					{"OK", true}
 				});
 			}
+            else State = AppState.PLAYING;
 		}
 
 
