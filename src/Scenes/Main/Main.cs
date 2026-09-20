@@ -44,7 +44,37 @@ public partial class Main : Control
 
 		AddChild(time);
 
-		WolfApi.Init();
+        WolfApi.Init();
+        var gpuStatus = new Button { Text = "GPUs: …", TooltipText = "GPU names, memory, utilization and connected viewers" };
+        var header = GetNode<HBoxContainer>("Content/Header/MarginContainer/HBoxContainer");
+        header.AddChild(gpuStatus);
+        header.MoveChild(gpuStatus, 2);
+        var options = header.GetNode<Button>("OptionsButton");
+        var exit = header.GetNode<Button>("ExitButton");
+        options.FocusNeighborRight = gpuStatus.GetPath();
+        gpuStatus.FocusNeighborLeft = options.GetPath();
+        gpuStatus.FocusNeighborRight = exit.GetPath();
+        exit.FocusNeighborLeft = gpuStatus.GetPath();
+        gpuStatus.Pressed += GpuDialogue.ShowStatus;
+        var gpuTimer = new Timer { WaitTime = 5, Autostart = true };
+        bool refreshingGpus = false;
+        async void RefreshGpus()
+        {
+            if (refreshingGpus) return;
+            refreshingGpus = true;
+            string label;
+            try
+            {
+                var response = await WolfApi.GetGpus();
+                label = response?.Success == true ? $"GPUs: {response.Gpus.Count}" : "GPUs: unavailable";
+            }
+            catch (System.Exception) { label = "GPUs: unavailable"; }
+            if (IsInstanceValid(gpuStatus)) gpuStatus.Text = label;
+            refreshingGpus = false;
+        }
+        gpuTimer.Timeout += RefreshGpus;
+        AddChild(gpuTimer);
+        RefreshGpus();
 
 		SelfUpdateAsync();
 

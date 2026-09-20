@@ -37,7 +37,12 @@ public partial class WolfApi
     public static async Task<string?> CreateLobby(Lobby lobby)
     {
         var content = await PostAsync("/lobbies/create", lobby);
-        return content is null ? null : JsonSerializer.Deserialize<LobbyCreatedResponse>(content, JsonOptions)?.LobbyId;
+        var response = content is null ? null : JsonSerializer.Deserialize<LobbyCreatedResponse>(content, JsonOptions);
+        if (response?.Success == true) return response.LobbyId;
+        var error = content is null ? "Wolf did not respond." : JsonSerializer.Deserialize<ErrorResponse>(content, JsonOptions)?.Error;
+        await WolfUI.QuestionDialogue.OpenDialogue("Could not start app", error ?? "The app could not be started.",
+            new Dictionary<string, bool> { { "OK", true } });
+        return null;
     }
     
     public static async Task<ErrorResponse?> JoinLobby(string lobbyId, string sessionId, List<int>? pin = null)

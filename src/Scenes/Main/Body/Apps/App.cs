@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using System.Collections.Generic;
 using Godot;
 using Resources.WolfAPI;
@@ -327,7 +328,20 @@ public partial class App : MarginContainer, IRestorable<App>
 		return icon;
 	}
 
-	private async void OnStartPressed()
+	private bool _launching;
+    private async void OnStartPressed()
+    {
+        if (_launching) return;
+        _launching = true;
+        try { await StartApp(); }
+        catch (Exception error)
+        {
+            await QuestionDialogue.OpenDialogue("Could not start app", error.Message,
+                new Dictionary<string, bool> { { "OK", true } });
+        }
+        finally { _launching = false; MenuButtonStart.Disabled = false; }
+    }
+    private async Task StartApp()
 	{
 		//TODO: check if user already has a open singleplayer lobby for the chosen ap or folder and if yes re-join.
 
@@ -351,8 +365,12 @@ public partial class App : MarginContainer, IRestorable<App>
 			if (session?.ClientSettings is null)
 				return;
 
+            var choice = await GpuDialogue.Pick(Title ?? "app", session.VideoSdr420 ? session.VideoCodec : -1);
+            if (choice.Cancelled) { MenuButtonStart.Disabled = false; return; }
 			lobby = new Resources.WolfAPI.Lobby
 			{
+                GpuId = choice.Gpu?.Device.Id,
+                SourceSessionId = WolfApi.SessionId,
 				ProfileId = WolfApi.ActiveProfile.Id,
 				Name = Title,
 				MultiUser = false,
@@ -365,8 +383,8 @@ public partial class App : MarginContainer, IRestorable<App>
 					Width = session.VideoWidth,
 					Height = session.VideoHeight,
 					RefreshRate = session.VideoRefreshRate,
-					RunnerRenderNode = RenderNode,
-					WaylandRenderNode = RenderNode,
+					RunnerRenderNode = choice.Gpu?.Device.RenderNode ?? RenderNode,
+					WaylandRenderNode = choice.Gpu?.Device.RenderNode ?? RenderNode,
 					VideoProducerBufferCaps = System.Environment.GetEnvironmentVariable("WOLF_VIDEO_BUFFER_CAPS") ?? ""
 				},
 				AudioSettings = new AudioSettings
@@ -378,15 +396,12 @@ public partial class App : MarginContainer, IRestorable<App>
 			lobbyId = await WolfApi.CreateLobby(lobby);
 		}
 
-		State = AppState.PLAYING;
-
-
 		if (lobbyId is not null)
 		{
 			var response = await WolfApi.JoinLobby(lobbyId, WolfApi.SessionId);
-			if (response?.Success == false)
+			if (response?.Success != true)
 			{
-				await QuestionDialogue.OpenDialogue("Lobby full", "The Lobby you tried joining is Full.", new Dictionary<string, bool>()
+				await QuestionDialogue.OpenDialogue("Could not enter app", response?.Error ?? "Wolf did not respond.", new Dictionary<string, bool>()
 				{
 					{"OK", true}
 				});
@@ -420,6 +435,18 @@ public partial class App : MarginContainer, IRestorable<App>
 	}
 
 	private async void OnCoopPressed()
+    {
+        if (_launching) return;
+        _launching = true;
+        try { await StartCoop(); }
+        catch (Exception error)
+        {
+            await QuestionDialogue.OpenDialogue("Could not start lobby", error.Message,
+                new Dictionary<string, bool> { { "OK", true } });
+        }
+        finally { _launching = false; MenuButtonCoop.Disabled = false; }
+    }
+    private async Task StartCoop()
 	{
 		if (Runner?.Name is null)
 			return;
@@ -430,8 +457,12 @@ public partial class App : MarginContainer, IRestorable<App>
 		if (session?.ClientSettings is null)
 			return;
 
+        var choice = await GpuDialogue.Pick(Title ?? "app", session.VideoSdr420 ? session.VideoCodec : -1);
+        if (choice.Cancelled) { MenuButtonCoop.Disabled = false; return; }
 		Resources.WolfAPI.Lobby lobby = new()
 		{
+            GpuId = choice.Gpu?.Device.Id,
+            SourceSessionId = WolfApi.SessionId,
 			ProfileId = WolfApi.ActiveProfile.Id,
 			Name = Title,
 			MultiUser = true,
@@ -444,8 +475,8 @@ public partial class App : MarginContainer, IRestorable<App>
 				Width = session.VideoWidth,
 				Height = session.VideoHeight,
 				RefreshRate = session.VideoRefreshRate,
-				RunnerRenderNode = RenderNode,
-				WaylandRenderNode = RenderNode,
+				RunnerRenderNode = choice.Gpu?.Device.RenderNode ?? RenderNode,
+				WaylandRenderNode = choice.Gpu?.Device.RenderNode ?? RenderNode,
 				VideoProducerBufferCaps = System.Environment.GetEnvironmentVariable("WOLF_VIDEO_BUFFER_CAPS") ?? ""
 			},
 			AudioSettings = new AudioSettings
@@ -471,14 +502,18 @@ public partial class App : MarginContainer, IRestorable<App>
 		}
 
 		var lobbyId = await WolfApi.CreateLobby(lobby);
-		if (lobbyId is not null)
-			await WolfApi.JoinLobby(lobbyId, WolfApi.SessionId, lobby.Pin);
+        if (lobbyId is not null)
+        {
+            var joined = await WolfApi.JoinLobby(lobbyId, WolfApi.SessionId, lobby.Pin);
+            if (joined?.Success != true)
+                await QuestionDialogue.OpenDialogue("Could not enter lobby", joined?.Error ?? "Wolf did not respond.",
+                    new Dictionary<string, bool> { { "OK", true } });
+        }
 
 		MenuButtonCoop.Disabled = false;
 
 		AppButton.GrabFocus();
 
-		State = AppState.PLAYING;
 	}
 
 	private void PullImage()

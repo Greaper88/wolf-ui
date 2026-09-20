@@ -6,6 +6,10 @@ namespace Resources.WolfAPI;
 
 public partial class Lobby
 {
+    [JsonInclude, JsonPropertyName("gpu_id"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? GpuId { get; set; }
+    [JsonInclude, JsonPropertyName("source_session_id"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SourceSessionId { get; set; }
     [JsonInclude, JsonPropertyName("profile_id"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ProfileId { get; set; }
     [JsonInclude, JsonPropertyName("started_by_profile_id"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

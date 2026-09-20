@@ -6,6 +6,8 @@ namespace Resources.WolfAPI;
 
 public class Session
 {
+    [JsonInclude, JsonPropertyName("video_sdr_420")] public bool VideoSdr420 { get; set; } = true;
+    [JsonInclude, JsonPropertyName("video_codec")] public int VideoCodec { get; set; }
     [JsonInclude, JsonPropertyName("app_id")]
     public string? AppId {get;set;}
     [JsonInclude, JsonPropertyName("client_id")]
