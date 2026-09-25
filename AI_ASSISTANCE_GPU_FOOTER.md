@@ -33,9 +33,14 @@ minus the current session, not unique profiles.
   HEVC and GPU usage. Cross-device persistent-app handoff and return to the
   original launcher GPU passed with continuing video frames.
 
-The image `wolf-ui:gpu-footer-candidate` is a local verification artifact. This
-change has not been published or deployed. Both companion images need updating to
-provide the new metadata and display together.
+The image `wolf-ui:gpu-footer-candidate` was used for initial local verification.
+Both companion release images were subsequently built from committed source,
+published and deployed together. The UI source revision is
+`11218a6d9296484d1075dd5c8c3d38a62295255a`; tags are
+`ghcr.io/greaper88/wolf-ui:gpu-selection-11218a6` and `gpu-selection-dev`, with
+manifest digest `sha256:0010941ef47d511b7c2823f3ab55ca797216631a8b1f1b20c76fd91985bf194e`.
+See the [paired publication record](https://github.com/Greaper88/wolf/blob/dev-gpu-selection/docs/modules/dev/pages/gpu-footer-publication-2026-09-25.md)
+for server details, deployment checks and publication tools.
 
 ## Tools
 
