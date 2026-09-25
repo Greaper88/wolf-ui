@@ -1,6 +1,12 @@
 # Wolf-UI
 A UI for Wolf, the main entrypoint when starting a streaming session 
 
+This is the `dev-gpu-selection` branch for future NVIDIA and vGPU work. Use
+`ghcr.io/greaper88/wolf:gpu-selection-dev` with `ghcr.io/greaper88/wolf-ui:gpu-selection-dev`.
+The primary branch is [`auto-gpu-selection`](https://github.com/Greaper88/wolf-ui/tree/auto-gpu-selection),
+using `ghcr.io/greaper88/wolf:latest` and `ghcr.io/greaper88/wolf-ui:latest`.
+Set the UI image in Wolf's `config.toml` app runner and pull both images when changing channels.
+
 ----
 ### Supported Environment Args
 - WOLF_UI_ARGS 
