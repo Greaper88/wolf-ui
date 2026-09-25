@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.Json.Serialization;
 
 namespace Resources.WolfAPI;
@@ -50,6 +51,10 @@ public class SessionGpu
     public ulong? VramBytes {get;set;}
     [JsonInclude, JsonPropertyName("encoder_percent")]
     public double? EncoderPercent {get;set;}
+    [JsonInclude, JsonPropertyName("gpu_percent")]
+    public double? GpuPercent {get;set;}
+    [JsonInclude, JsonPropertyName("codec")]
+    public string? Codec {get;set;}
     [JsonInclude, JsonPropertyName("projected_encoder_percent")]
     public double? ProjectedEncoderPercent {get;set;}
     [JsonInclude, JsonPropertyName("session_count_on_gpu")]
@@ -62,7 +67,10 @@ public class SessionGpu
     {
         if (!string.IsNullOrEmpty(StreamError)) return StreamError;
         var vram = VramBytes.HasValue ? $"{VramBytes.Value / (1024.0 * 1024 * 1024):0.#} GiB VRAM" : "VRAM unknown";
-        var encoder = EncoderPercent.HasValue ? $"Encoder {EncoderPercent.Value:0.#}%" : "Encoder unknown";
-        return $"{Name ?? Id ?? "GPU"} · {vram} · {encoder} · Other Users on this GPU: {Math.Max(0, SessionCountOnGpu - 1)}";
+        // Older servers can send driver/PCI fallback text instead of a product name.
+        var name = string.IsNullOrWhiteSpace(Name) || Name.Contains("0x") || Name.Contains(":") ? "GPU" : Name;
+        var node = string.IsNullOrWhiteSpace(RenderNode) ? "Render node unknown" : Path.GetFileName(RenderNode);
+        var usage = GpuPercent.HasValue ? $"GPU usage {GpuPercent.Value:0.#}%" : "GPU usage unknown";
+        return $"{name} · {node} · {Codec ?? "Codec unknown"} · {usage} · {vram} · Other users on GPU: {Math.Max(0, SessionCountOnGpu - 1)}";
     }
 }

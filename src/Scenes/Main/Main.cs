@@ -67,7 +67,7 @@ public partial class Main : Control
         {
             var session = await WolfApi.GetSession();
             if (!IsInstanceValid(this) || !IsInsideTree()) return;
-            var label = GetNode<Label>("Content/GpuStatus");
+            var label = GetNode<Label>("Content/Footer/MarginContainer/HBoxContainer/GpuStatus");
             label.Visible = session?.Gpu is not null;
             label.Text = session?.Gpu?.StatusText() ?? "";
             label.TooltipText = label.Text;
@@ -75,7 +75,7 @@ public partial class Main : Control
         catch (System.Exception e)
         {
             if (IsInstanceValid(this) && IsInsideTree())
-                GetNode<Label>("Content/GpuStatus").Visible = false;
+                GetNode<Label>("Content/Footer/MarginContainer/HBoxContainer/GpuStatus").Visible = false;
             Logger.LogDebug("GPU status unavailable: {0}", e.Message);
         }
         finally { _gpuStatusPending = false; }
