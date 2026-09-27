@@ -19,11 +19,13 @@ public partial class WolfApi
     }
     
     public static async Task<List<Lobby>> GetLobbies()
+        => await GetLobbiesSnapshot() ?? [];
+
+    // A failed request is not an empty list: callers reconciling app state must retain it.
+    public static async Task<List<Lobby>?> GetLobbiesSnapshot()
     {
         var lobbies = await GetAsync<LobbiesResponse>("/lobbies");
-        if (lobbies is null) return [];
-        if (lobbies.Success) return lobbies.Lobbies ?? [];
-        return [];
+        return lobbies?.Success == true ? lobbies.Lobbies : null;
     }
         /**
         <summary>
@@ -73,7 +75,7 @@ public partial class WolfApi
         Logger.LogInformation("{0}", await result.Content.ReadAsStringAsync());
     }
     
-    public static async Task StopLobby(string lobbyId, List<int>? pin = null)
+    public static async Task<ErrorResponse?> StopLobby(string lobbyId, List<int>? pin = null)
     {
         var stopLobby = new StopLobbyRecord()
         {
@@ -82,6 +84,6 @@ public partial class WolfApi
         };
 
         var result = await PostAsync("/lobbies/stop", stopLobby);
-        //return result is null ? null : JsonSerializer.Deserialize<ErrorResponse>(result, JsonOptions);
+        return result is null ? null : JsonSerializer.Deserialize<ErrorResponse>(result, JsonOptions);
     }
 }

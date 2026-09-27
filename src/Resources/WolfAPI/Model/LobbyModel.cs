@@ -12,6 +12,8 @@ public partial class Lobby
     public string? ProfileId { get; set; }
     [JsonInclude, JsonPropertyName("started_by_profile_id"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? StartedByProfileId { get; set; }
+    // Live create events and GET /lobbies use different names for the same owner.
+    public string? OwnerProfileId => StartedByProfileId ?? ProfileId;
     [JsonInclude, JsonPropertyName("id"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Id { get; set; }
     [JsonInclude, JsonPropertyName("name")]
