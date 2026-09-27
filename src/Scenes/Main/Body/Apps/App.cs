@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using Resources.WolfAPI;
 using Skerga.GodotNodeUtilGenerator;
@@ -52,11 +53,23 @@ public partial class App : MarginContainer, IRestorable<App>
 
 	private bool IsAlreadyRunning(Resources.WolfAPI.Lobby lobby)
 	{
-		if (!lobby.MultiUser && lobby.StartedByProfileId != WolfApi.ActiveProfile.Id)
+		if (lobby.OwnerProfileId != WolfApi.ActiveProfile.Id)
 			return false;
 		if (!string.IsNullOrEmpty(lobby.RunnerStateFolder) && Runner?.Name is not null)
 			return lobby.RunnerStateFolder == $"profile-data/{WolfApi.ActiveProfile.Id}/{Runner.Name}";
 		return lobby.Name == Title;
+	}
+
+	internal void RefreshRunningLobby(IReadOnlyList<Resources.WolfAPI.Lobby> lobbies)
+	{
+		SetRunningLobby(lobbies.FirstOrDefault(IsAlreadyRunning));
+	}
+
+	private void SetRunningLobby(Resources.WolfAPI.Lobby? lobby)
+	{
+		_runningLobby = lobby;
+		if (State != AppState.DOWNLOADING)
+			State = lobby is not null ? AppState.PLAYING : _isImageOnDisc ? AppState.OK : AppState.NOTONDISK;
 	}
 
 	// Called when the node enters the scene tree for the first time.
@@ -110,13 +123,18 @@ public partial class App : MarginContainer, IRestorable<App>
 			AppIcon.Texture = await WolfApi.GetIcon(this);
 		};
 		
-		_isImageOnDisc = await WolfApi.IsImageOnDisk(Runner.Image);
+		var imageName = Runner?.Image;
+		if (imageName is null) return;
+		_isImageOnDisc = await WolfApi.IsImageOnDisk(imageName);
 		
 		async void onTimeout()
 		{
-			_isImageOnDisc = await WolfApi.IsImageOnDisk(Runner.Image);
+			if (!IsInstanceValid(this) || !IsInsideTree()) return;
+			_isImageOnDisc = await WolfApi.IsImageOnDisk(imageName);
+			if (!IsInstanceValid(this) || !IsInsideTree()) return;
 			GetTree().CreateTimer(15.0, true).Timeout += onTimeout;
 		};
+		if (!IsInstanceValid(this) || !IsInsideTree()) return;
 		GetTree().CreateTimer(15.0, true).Timeout += onTimeout;
 	}
 
@@ -132,20 +150,21 @@ public partial class App : MarginContainer, IRestorable<App>
 		if (Main.Singleton.AppList is not AppList appList) return;
 		appList.LobbyCreatedEvent -= OnLobbyCreatedEvent;
 		appList.LobbyStoppedEvent -= OnLobbyStoppedEvent;
+		WolfApi.Singleton.ImageUpdated -= OnImageUpdated;
+		WolfApi.Singleton.ImageAlreadyUptoDate -= OnImageUpdated;
+		WolfApi.Singleton.ImagePullProgress -= OnImagePullProgress;
 	}
 
 	private void OnLobbyCreatedEvent(object? caller, Resources.WolfAPI.Lobby lobby)
 	{
 		if (!IsInstanceValid(this) || !IsAlreadyRunning(lobby)) return;
-		_runningLobby = lobby;
-		EmitSignalAppRunning();
+		SetRunningLobby(lobby);
 	}
 
 	private void OnLobbyStoppedEvent(object? caller, string lobbyId)
 	{
 		if (!IsInstanceValid(this) || lobbyId != _runningLobby?.Id) return;
-		_runningLobby = null;
-		EmitSignalAppStopped();
+		SetRunningLobby(null);
 	}
 
 	private void OnImageUpdated(string image)
@@ -171,7 +190,7 @@ public partial class App : MarginContainer, IRestorable<App>
 		ProgressBar.Value = progress;
 	}
 
-	public override async void _Process(double delta)
+	public override void _Process(double delta)
 	{
 		base._Process(delta);
 
@@ -207,7 +226,7 @@ public partial class App : MarginContainer, IRestorable<App>
 
 		if (Runner?.Image is null || State == AppState.DOWNLOADING) return;
 		
-		State = _isImageOnDisc ? _runningLobby is null ? AppState.OK : AppState.PLAYING : AppState.NOTONDISK;
+		State = _runningLobby is not null ? AppState.PLAYING : _isImageOnDisc ? AppState.OK : AppState.NOTONDISK;
 	}
 
 	private void OnStateChanged()
@@ -243,6 +262,9 @@ public partial class App : MarginContainer, IRestorable<App>
 				PlayingHint.Visible = true;
 				OkHint.Visible = false;
 				ProgressBar.Value = 0;
+				ProgressBar.Visible = false;
+				DisabledIndicator.Visible = false;
+				AppButton.Disabled = false;
 
 				if (_runningLobby is not null && !_runningLobby.MultiUser)
 				{
@@ -332,7 +354,7 @@ public partial class App : MarginContainer, IRestorable<App>
 
 		MenuButtonStart.Disabled = true;
 
-		if (!_isImageOnDisc)
+		if (!_isImageOnDisc && _runningLobby is null)
 		{
 			PullImage();
 			GrabFocus();
@@ -377,6 +399,11 @@ public partial class App : MarginContainer, IRestorable<App>
 
 		if (lobbyId is not null)
 		{
+			// CreateLobby may return an existing persistent app without emitting a create event.
+			if (!IsInstanceValid(this) || !IsInsideTree()) return;
+			lobby!.Id = lobbyId;
+			(Main.Singleton.AppList as AppList)?.InvalidateLobbySnapshot();
+			SetRunningLobby(lobby);
 			var response = await WolfApi.JoinLobby(lobbyId, WolfApi.SessionId);
 			if (response is null || !response.Success)
 			{
@@ -396,15 +423,25 @@ public partial class App : MarginContainer, IRestorable<App>
 
 	private async void OnStopPressed()
 	{
-		if (_runningLobby?.Id is null)
+		if (_runningLobby?.Id is not { } lobbyId)
 			return;
 
 
 		MenuButtonStop.Disabled = true;
-		await WolfApi.StopLobby(_runningLobby.Id);
+		var response = await WolfApi.StopLobby(lobbyId);
+		if (!IsInstanceValid(this) || !IsInsideTree()) return;
 		MenuButtonStop.Disabled = false;
-
-		State = _isImageOnDisc ? AppState.NOTONDISK : AppState.OK;
+		if (response?.Success == true)
+		{
+			(Main.Singleton.AppList as AppList)?.InvalidateLobbySnapshot();
+			if (_runningLobby?.Id == lobbyId)
+				SetRunningLobby(null);
+		}
+		else
+		{
+			await QuestionDialogue.OpenDialogue("Could not stop app", response?.Error ?? "Wolf did not respond.",
+				new Dictionary<string, bool> { { "OK", true } });
+		}
 
 		AppButton.GrabFocus();
 	}

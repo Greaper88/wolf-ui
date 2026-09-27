@@ -13,6 +13,10 @@ public partial class AppList : Control
 {
     public event EventHandler<Resources.WolfAPI.Lobby>? LobbyCreatedEvent;
     public event EventHandler<string>? LobbyStoppedEvent;
+    private int _rebuildVersion;
+    private int _loadedVersion = -1;
+    private int _lobbyRevision;
+    private bool _refreshPending;
 
 	// Called when the node enters the scene tree for the first time.
 	public override void _Ready()
@@ -34,12 +38,19 @@ public partial class AppList : Control
 
 		WolfApi.Singleton.LobbyCreatedEvent += OnLobbyStarted;
 		WolfApi.Singleton.LobbyStoppedEvent += OnLobbyStopped;
+		var refreshTimer = new Timer { WaitTime = 5, Autostart = true };
+		refreshTimer.Timeout += async () => await RefreshRunningApps();
+		AddChild(refreshTimer);
 	}
 
 	public override void _ExitTree()
 	{
+		if (Engine.IsEditorHint()) return;
+		++_rebuildVersion;
 		WolfApi.Singleton.LobbyCreatedEvent -= OnLobbyStarted;
 		WolfApi.Singleton.LobbyStoppedEvent -= OnLobbyStopped;
+		if (Main.Singleton.controllerMap is not null)
+			Main.Singleton.controllerMap.UsedControllerChanged -= OnControllerChanged;
 	}
 	
 	private void OnControllerChanged(ControllerMap.ControllerType  controllerType)
@@ -59,6 +70,7 @@ public partial class AppList : Control
 	
 	private async void RebuildAppList()
 	{
+		var version = ++_rebuildVersion;
 		if (!Visible)
 		{
 			Main.Singleton.BackHint.Hide();
@@ -67,10 +79,11 @@ public partial class AppList : Control
 
 		AppGrid.Columns = AppGrid.GetThemeConstant("columns", "AppListGrid").Between(1, 6);
 		Main.Singleton.BackHint.Visible = true;
-		await LoadAppList();
-
-		var lobbies = await WolfApi.GetLobbies();
-		lobbies.ForEach(l => OnLobbyStarted(this, l));
+		var profile = WolfApi.ActiveProfile;
+		if (profile is null || !await LoadAppList(profile, version)) return;
+		_loadedVersion = version;
+		await RefreshRunningApps();
+		if (!IsCurrentView(version, profile.Id)) return;
 
 		if (AppGrid.GetChildren().Select(n => n as App).FirstOrDefault(n => n is not null) is { } ctrl)
 			ctrl.GrabFocus();	
@@ -78,8 +91,33 @@ public partial class AppList : Control
 			Main.Singleton.OptionsButton.GrabFocus();
 	}
 
+	private bool IsCurrentView(int version, string? profileId) =>
+		IsInstanceValid(this) && IsInsideTree() && IsVisibleInTree() &&
+		version == _rebuildVersion && profileId == WolfApi.ActiveProfile?.Id;
+
+	internal void InvalidateLobbySnapshot() => ++_lobbyRevision;
+
+	internal async Task RefreshRunningApps()
+	{
+		var profileId = WolfApi.ActiveProfile?.Id;
+		var version = _rebuildVersion;
+		if (_refreshPending || _loadedVersion != version || !IsCurrentView(version, profileId)) return;
+		_refreshPending = true;
+		var revision = _lobbyRevision;
+		try
+		{
+			var lobbies = await WolfApi.GetLobbiesSnapshot();
+			// Failed or outdated snapshots must not erase a newer create/stop event or another profile's view.
+			if (lobbies is null || revision != _lobbyRevision || !IsCurrentView(version, profileId)) return;
+			foreach (var app in AppGrid.GetChildren().OfType<App>())
+				app.RefreshRunningLobby(lobbies);
+		}
+		finally { _refreshPending = false; }
+	}
+
 	private void OnLobbyStopped(object? caller, string lobbyId)
 	{
+		++_lobbyRevision;
 		if (!Visible)
 			return;
 
@@ -88,11 +126,9 @@ public partial class AppList : Control
 
 	private void OnLobbyStarted(object? sender, Resources.WolfAPI.Lobby? lobby)
 	{
+		++_lobbyRevision;
 		if (!Visible) return;
-
-		if (lobby?.ProfileId != WolfApi.ActiveProfile.Id &&
-		    lobby?.StartedByProfileId != WolfApi.ActiveProfile.Id) return;
-		if (lobby is null)
+		if (lobby is null || lobby.OwnerProfileId != WolfApi.ActiveProfile?.Id)
 			return;
 		LobbyCreatedEvent?.Invoke(this, lobby);
 	}
@@ -113,7 +149,7 @@ public partial class AppList : Control
 		}
 	}
 
-	private async Task LoadAppList()
+	private async Task<bool> LoadAppList(Profile profile, int version)
 	{
 		Main.Singleton.OptionsButton.Visible = true;
 		Main.Singleton.HeaderLabel.Text = "Loading...";
@@ -125,8 +161,13 @@ public partial class AppList : Control
 			AppGrid.RemoveChild(child);
 		}
 		
-		var enumerator = (await WolfApi.GetApps(WolfApi.ActiveProfile))
-			.Select((value, i) => (value, i));
+		var apps = await WolfApi.GetApps(profile);
+		if (!IsCurrentView(version, profile.Id))
+		{
+			foreach (var app in apps) app.QueueFree();
+			return false;
+		}
+		var enumerator = apps.Select((value, i) => (value, i));
 		
 		foreach (var vi in enumerator)
 		{
@@ -134,7 +175,7 @@ public partial class AppList : Control
 			AddAppEntry(vi.value);
 		}
 		
-		var firstChildren = AppGrid.GetChildren()[..AppGrid.Columns].OfType<App>();
+		var firstChildren = AppGrid.GetChildren().Take(AppGrid.Columns).OfType<App>();
 		foreach(var child in firstChildren)
 		{
 			child.AppButton.FocusEntered += () =>
@@ -145,7 +186,7 @@ public partial class AppList : Control
 		
 		var remainder = AppGrid.GetChildCount() % AppGrid.Columns;
 		var idx = AppGrid.GetChildCount() - (remainder == 0 ? AppGrid.Columns : remainder);
-		var lastChildren = AppGrid.GetChildren()[idx..].OfType<App>();
+		var lastChildren = AppGrid.GetChildren().Skip(Math.Max(0, idx)).OfType<App>();
 		foreach(var child in lastChildren)
 		{
 			child.AppButton.FocusEntered += () =>
@@ -155,6 +196,7 @@ public partial class AppList : Control
 		};
 		
 		Main.Singleton.HeaderLabel.Text = "Select Application";
+		return true;
 	}
 
 	private void EditorMockupReady()
