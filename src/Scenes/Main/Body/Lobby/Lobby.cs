@@ -90,20 +90,35 @@ public partial class Lobby : Control
 
     private async void JoinLobby()
     {
-        List<int>? pin = null;
-
-        if (_lobby.IsPinLocked)
+        if (JoinButton.Disabled) return;
+        JoinButton.Disabled = true;
+        try
         {
-            pin = await PinInput.RequestPin();
+            var session = await WolfApi.GetSession();
+            var target = await DualDisplayLauncher.SelectTarget(session, _lobby.Name ?? "this app");
+            if (!target.Proceed || !IsInstanceValid(this) || !IsInsideTree()) return;
+            List<int>? pin = null;
+
+            if (_lobby.IsPinLocked)
+            {
+                pin = await PinInput.RequestPin();
+            }
+
+            var error = await WolfApi.JoinLobby(Name, WolfApi.SessionId, pin, target.DisplayId);
+            if (error?.Success == true)
+            {
+                Main.Singleton.RefreshSessionStatus();
+                return;
+            }
+            await QuestionDialogue.OpenDialogue("Could not enter app", error?.Error ?? "Wolf did not respond.", new Dictionary<string, bool>()
+            {
+                {"OK", true}
+            });
         }
-
-        var error = await WolfApi.JoinLobby(Name, WolfApi.SessionId, pin);
-        if (error is null || error.Success) return;
-        GD.Print(error.Error);
-        await QuestionDialogue.OpenDialogue($"{error.Error}", $"Could not Join Lobby:\n{error.Error}.", new Dictionary<string, bool>()
+        finally
         {
-            {"OK", true}
-        });
+            if (IsInstanceValid(this) && IsInsideTree()) JoinButton.Disabled = false;
+        }
     }
 
     private async void StopLobby()

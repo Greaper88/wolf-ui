@@ -6,12 +6,13 @@ namespace Resources.WolfAPI;
 
 public partial class WolfApi
 {
-    public static async Task StartRunner(Runner runner, bool joinable = false)
+    public static async Task StartRunner(Runner runner, bool joinable = false, int? displayId = null)
     {
         var starter = new Starter()
         {
             StopStreamWhenOver = false,
             SessionId = SessionId,
+            DisplayId = displayId,
             Runner = runner
         };
         var result = await PostAsync("/runners/start", starter);

@@ -47,7 +47,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     for title in ("Steam", "Firefox", "Desktop", "RetroArch", "Kodi")]
             ) for owner in ("alice", "bob")]))
         elif self.path.endswith("/sessions"):
-            self.reply(dict(success=True, sessions=[]))
+            self.reply(dict(success=True, sessions=current.get("sessions", [])))
         elif "/docker/images/inspect" in self.path:
             self.reply(dict(Id="test-image"))
         elif self.path.endswith("/lobbies"):
@@ -62,9 +62,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
         current = state()
+        with open(root + "/requests.jsonl", "a") as f:
+            f.write(json.dumps(dict(path=self.path, body=body)) + "\n")
         if self.path.endswith("/lobbies/create"):
             # Existing persistent app: deliberately no create event.
-            self.reply(dict(success=True, lobby_id="deduplicated-app"))
+            self.reply(dict(success=True, lobby_id=current.get("created_id", "deduplicated-app")))
         elif self.path.endswith("/lobbies/join"):
             self.reply(dict(success=True))
         elif self.path.endswith("/lobbies/stop"):
@@ -77,6 +79,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     daemon_threads = True
+    request_queue_size = 128
 
 
 socket_path = root + "/wolf.sock"

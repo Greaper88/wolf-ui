@@ -46,6 +46,16 @@ public partial class Main : Control
 
 		WolfApi.Init();
 
+        var dualDisplayStatus = new Label
+        {
+            Name = "DualDisplayStatus",
+            Visible = false,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill
+        };
+        GetNode("Content/Footer/MarginContainer/HBoxContainer").AddChild(dualDisplayStatus);
+
         var gpuTimer = new Timer { WaitTime = 5, OneShot = false, Autostart = true };
         gpuTimer.Timeout += RefreshGpuStatus;
         AddChild(gpuTimer);
@@ -71,6 +81,7 @@ public partial class Main : Control
             label.Visible = session?.Gpu is not null;
             label.Text = session?.Gpu?.StatusText() ?? "";
             label.TooltipText = label.Text;
+            UpdateDualDisplayStatus(session);
         }
         catch (System.Exception e)
         {
@@ -80,6 +91,17 @@ public partial class Main : Control
         }
         finally { _gpuStatusPending = false; }
     }
+
+    internal void UpdateDualDisplayStatus(Session? session)
+    {
+        var label = GetNodeOrNull<Label>("Content/Footer/MarginContainer/HBoxContainer/DualDisplayStatus");
+        if (label is null) return;
+        label.Text = DualDisplayLauncher.StatusText(session?.DualDisplay);
+        label.Visible = label.Text.Length > 0;
+        label.TooltipText = label.Text;
+    }
+
+    internal void RefreshSessionStatus() => RefreshGpuStatus();
 
 	/*
 	public void LoadTheme(string themeName)

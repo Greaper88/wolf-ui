@@ -7,6 +7,8 @@ namespace Resources.WolfAPI;
 
 public class Session
 {
+    [JsonInclude, JsonPropertyName("dual_display")]
+    public DualDisplay? DualDisplay {get;set;}
     [JsonInclude, JsonPropertyName("gpu")]
     public SessionGpu? Gpu {get;set;}
     [JsonInclude, JsonPropertyName("app_id")]

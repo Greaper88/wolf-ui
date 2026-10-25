@@ -348,77 +348,85 @@ public partial class App : MarginContainer, IRestorable<App>
 
 	private async void OnStartPressed()
 	{
-		//TODO: check if user already has a open singleplayer lobby for the chosen ap or folder and if yes re-join.
-
 		if (Runner?.Name is null) return;
-
 		MenuButtonStart.Disabled = true;
-
-		if (!_isImageOnDisc && _runningLobby is null)
+		try
 		{
-			PullImage();
-			GrabFocus();
-			return;
-		}
-
-		var lobby = _runningLobby;
-
-		var lobbyId = lobby?.Id;
-		if (lobby == null)
-		{
-			var session = await WolfApi.GetSession();
-			if (session?.ClientSettings is null)
+			if (!_isImageOnDisc && _runningLobby is null)
+			{
+				PullImage();
+				GrabFocus();
 				return;
-
-			lobby = new Resources.WolfAPI.Lobby
-			{
-				ProfileId = WolfApi.ActiveProfile.Id,
-				Name = Title,
-				MultiUser = false,
-				IconPngPath = GetIconPath(),
-				StopWhenEveryoneLeaves = false,
-				RunnerStateFolder = $"profile-data/{WolfApi.ActiveProfile.Id}/{Runner.Name}",
-				Runner = Runner,
-				VideoSettings = new VideoSettings
-				{
-					Width = session.VideoWidth,
-					Height = session.VideoHeight,
-					RefreshRate = session.VideoRefreshRate,
-					RunnerRenderNode = session.Gpu?.RenderNode ?? RenderNode,
-					WaylandRenderNode = session.Gpu?.RenderNode ?? RenderNode,
-					VideoProducerBufferCaps = System.Environment.GetEnvironmentVariable("WOLF_VIDEO_BUFFER_CAPS") ?? ""
-				},
-				AudioSettings = new AudioSettings
-				{
-					ChannelCount = session.AudioChannelCount
-				},
-				ClientSettings = session.ClientSettings
-			};
-			lobbyId = await WolfApi.CreateLobby(lobby);
-		}
-
-		if (lobbyId is not null)
-		{
-			// CreateLobby may return an existing persistent app without emitting a create event.
-			if (!IsInstanceValid(this) || !IsInsideTree()) return;
-			lobby!.Id = lobbyId;
-			(Main.Singleton.AppList as AppList)?.InvalidateLobbySnapshot();
-			SetRunningLobby(lobby);
-			var response = await WolfApi.JoinLobby(lobbyId, WolfApi.SessionId);
-			if (response is null || !response.Success)
-			{
-				await QuestionDialogue.OpenDialogue("Could not enter app", response?.Error ?? "Wolf did not respond.", new Dictionary<string, bool>()
-				{
-					{"OK", true}
-				});
 			}
-            else State = AppState.PLAYING;
+
+			var session = await WolfApi.GetSession();
+			if (session?.ClientSettings is null) return;
+			var target = await DualDisplayLauncher.SelectTarget(session, Title ?? "this app");
+			if (!target.Proceed || !IsInstanceValid(this) || !IsInsideTree()) return;
+
+			var lobby = _runningLobby;
+
+			var lobbyId = lobby?.Id;
+			if (lobby == null)
+			{
+				lobby = new Resources.WolfAPI.Lobby
+				{
+					DisplayId = target.DisplayId,
+					ProfileId = WolfApi.ActiveProfile.Id,
+					Name = Title,
+					MultiUser = false,
+					IconPngPath = GetIconPath(),
+					StopWhenEveryoneLeaves = false,
+					RunnerStateFolder = $"profile-data/{WolfApi.ActiveProfile.Id}/{Runner.Name}",
+					Runner = Runner,
+					VideoSettings = new VideoSettings
+					{
+						Width = target.Display?.Width ?? session.VideoWidth,
+						Height = target.Display?.Height ?? session.VideoHeight,
+						RefreshRate = target.Display?.Fps ?? session.VideoRefreshRate,
+						RunnerRenderNode = session.Gpu?.RenderNode ?? RenderNode,
+						WaylandRenderNode = session.Gpu?.RenderNode ?? RenderNode,
+						VideoProducerBufferCaps = System.Environment.GetEnvironmentVariable("WOLF_VIDEO_BUFFER_CAPS") ?? ""
+					},
+					AudioSettings = new AudioSettings
+					{
+						ChannelCount = session.AudioChannelCount
+					},
+					ClientSettings = session.ClientSettings
+				};
+				lobbyId = await WolfApi.CreateLobby(lobby);
+			}
+
+			if (lobbyId is not null)
+			{
+				// CreateLobby may return an existing persistent app without emitting a create event.
+				if (!IsInstanceValid(this) || !IsInsideTree()) return;
+				lobby!.Id = lobbyId;
+				(Main.Singleton.AppList as AppList)?.InvalidateLobbySnapshot();
+				SetRunningLobby(lobby);
+				var response = await WolfApi.JoinLobby(lobbyId, WolfApi.SessionId, displayId: target.DisplayId);
+				if (response is null || !response.Success)
+				{
+					await QuestionDialogue.OpenDialogue("Could not enter app", response?.Error ?? "Wolf did not respond.", new Dictionary<string, bool>()
+					{
+						{"OK", true}
+					});
+				}
+				else
+				{
+					State = AppState.PLAYING;
+					Main.Singleton.RefreshSessionStatus();
+				}
+			}
 		}
-
-
-		MenuButtonStart.Disabled = false;
-
-		AppButton.GrabFocus();
+		finally
+		{
+			if (IsInstanceValid(this) && IsInsideTree())
+			{
+				MenuButtonStart.Disabled = false;
+				AppButton.GrabFocus();
+			}
+		}
 	}
 
 	private async void OnStopPressed()
@@ -457,60 +465,77 @@ public partial class App : MarginContainer, IRestorable<App>
 			return;
 
 		MenuButtonCoop.Disabled = true;
-
-		var session = await WolfApi.GetSession();
-		if (session?.ClientSettings is null)
-			return;
-
-		Resources.WolfAPI.Lobby lobby = new()
+		try
 		{
-			ProfileId = WolfApi.ActiveProfile.Id,
-			Name = Title,
-			MultiUser = true,
-			IconPngPath = GetIconPath(),
-			StopWhenEveryoneLeaves = false,
-			RunnerStateFolder = $"profile-data/{WolfApi.ActiveProfile.Id}/{Runner.Name}",
-			Runner = Runner,
-			VideoSettings = new VideoSettings
-			{
-				Width = session.VideoWidth,
-				Height = session.VideoHeight,
-				RefreshRate = session.VideoRefreshRate,
-				RunnerRenderNode = RenderNode,
-				WaylandRenderNode = RenderNode,
-				VideoProducerBufferCaps = System.Environment.GetEnvironmentVariable("WOLF_VIDEO_BUFFER_CAPS") ?? ""
-			},
-			AudioSettings = new AudioSettings
-			{
-				ChannelCount = session.AudioChannelCount
-			},
-			ClientSettings = session.ClientSettings
-		};
+			var session = await WolfApi.GetSession();
+			if (session?.ClientSettings is null)
+				return;
+			var target = await DualDisplayLauncher.SelectTarget(session, Title ?? "this app");
+			if (!target.Proceed || !IsInstanceValid(this) || !IsInsideTree()) return;
 
-		if (await QuestionDialogue.OpenDialogue("Pin", "Add Pin to Lobby?",
-			new Dictionary<string, bool> {
-				{ "Yes", true },
-				{ "No", false }
-			},
-			new Dictionary<string, Func<bool>>
+			Resources.WolfAPI.Lobby lobby = new()
 			{
-				{"No", () => InputActions.IsActionJustPressed("ui_cancel") }
+				DisplayId = target.DisplayId,
+				ProfileId = WolfApi.ActiveProfile.Id,
+				Name = Title,
+				MultiUser = true,
+				IconPngPath = GetIconPath(),
+				StopWhenEveryoneLeaves = false,
+				RunnerStateFolder = $"profile-data/{WolfApi.ActiveProfile.Id}/{Runner.Name}",
+				Runner = Runner,
+				VideoSettings = new VideoSettings
+				{
+					Width = target.Display?.Width ?? session.VideoWidth,
+					Height = target.Display?.Height ?? session.VideoHeight,
+					RefreshRate = target.Display?.Fps ?? session.VideoRefreshRate,
+					RunnerRenderNode = RenderNode,
+					WaylandRenderNode = RenderNode,
+					VideoProducerBufferCaps = System.Environment.GetEnvironmentVariable("WOLF_VIDEO_BUFFER_CAPS") ?? ""
+				},
+				AudioSettings = new AudioSettings
+				{
+					ChannelCount = session.AudioChannelCount
+				},
+				ClientSettings = session.ClientSettings
+			};
+
+			if (await QuestionDialogue.OpenDialogue("Pin", "Add Pin to Lobby?",
+				new Dictionary<string, bool> {
+					{ "Yes", true },
+					{ "No", false }
+				},
+				new Dictionary<string, Func<bool>>
+				{
+					{"No", () => InputActions.IsActionJustPressed("ui_cancel") }
+				}
+			))
+			{
+				var pin = await PinInput.RequestPin();
+				lobby.Pin = pin;
 			}
-		))
-		{
-			var pin = await PinInput.RequestPin();
-			lobby.Pin = pin;
+
+			var lobbyId = await WolfApi.CreateLobby(lobby);
+			if (lobbyId is not null)
+			{
+				var response = await WolfApi.JoinLobby(lobbyId, WolfApi.SessionId, lobby.Pin, target.DisplayId);
+				if (response?.Success == true)
+				{
+					State = AppState.PLAYING;
+					Main.Singleton.RefreshSessionStatus();
+				}
+				else
+					await QuestionDialogue.OpenDialogue("Could not enter app", response?.Error ?? "Wolf did not respond.",
+						new Dictionary<string, bool> { { "OK", true } });
+			}
 		}
-
-		var lobbyId = await WolfApi.CreateLobby(lobby);
-		if (lobbyId is not null)
-			await WolfApi.JoinLobby(lobbyId, WolfApi.SessionId, lobby.Pin);
-
-		MenuButtonCoop.Disabled = false;
-
-		AppButton.GrabFocus();
-
-		State = AppState.PLAYING;
+		finally
+		{
+			if (IsInstanceValid(this) && IsInsideTree())
+			{
+				MenuButtonCoop.Disabled = false;
+				AppButton.GrabFocus();
+			}
+		}
 	}
 
 	private void PullImage()

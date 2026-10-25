@@ -48,14 +48,15 @@ public partial class WolfApi
         return null;
     }
     
-    public static async Task<ErrorResponse?> JoinLobby(string lobbyId, string sessionId, List<int>? pin = null)
+    public static async Task<ErrorResponse?> JoinLobby(string lobbyId, string sessionId, List<int>? pin = null, int? displayId = null)
     {
         var lobby = new LobbyJoin()
         {
-            ProfileId = ActiveProfile.Id,
+            ProfileId = ActiveProfile?.Id,
             LobbyId = lobbyId,
             MoonlightSessionId = sessionId,
-            Pin = pin
+            Pin = pin,
+            DisplayId = displayId
         };
 
         var result = await PostAsync("/lobbies/join", lobby);
