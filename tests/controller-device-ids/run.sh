@@ -9,8 +9,11 @@ test ! -e "$test_scene"
 cleanup() { rm -rf -- "$test_scene"; }
 trap cleanup EXIT
 mkdir "$test_scene"
-cp "$test_dir/ControllerDeviceIdChecks.cs" "$test_dir/ControllerDeviceIdChecks.tscn" "$test_scene/"
+cp "$test_dir/ControllerDeviceIdChecks.cs" "$test_dir/ControllerDeviceIdChecks.tscn" \
+   "$test_dir/ControllerActionChecks.cs" "$test_dir/ControllerActionChecks.tscn" "$test_scene/"
 export GODOT_SILENCE_ROOT_WARNING=1
 dotnet build "$project_root/Wolf-UI.csproj" -p:NuGetAudit=false --ignore-failed-sources
 Godot --headless --path "$project_root" --editor --import --quit
-timeout 30s Godot --headless --path "$project_root" res://ControllerDeviceIdTests/ControllerDeviceIdChecks.tscn
+for fixture in ControllerDeviceIdChecks ControllerActionChecks; do
+    timeout 30s Godot --headless --path "$project_root" "res://ControllerDeviceIdTests/$fixture.tscn"
+done

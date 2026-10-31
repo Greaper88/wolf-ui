@@ -16,6 +16,40 @@ public partial class InputActions : HBoxContainer
     
     private static Dictionary<string, ControlCounter> _checkCounter =  new Dictionary<string, ControlCounter>();
     private static InputActions _singleton = null!;
+
+    internal static void ConfigureJoypadActions()
+    {
+        // Godot defaults and project bindings can target device zero. A launcher
+        // left on the second display may retain any stable controller device ID.
+        foreach (var action in InputMap.GetActions())
+        {
+            var events = InputMap.ActionGetEvents(action);
+            var needsUpdate = false;
+            foreach (var binding in events)
+            {
+                if ((binding is InputEventJoypadButton or InputEventJoypadMotion) && binding.Device != -1)
+                {
+                    needsUpdate = true;
+                    break;
+                }
+            }
+            if (!needsUpdate) continue;
+
+            // Keep event order, keyboard/mouse bindings and the action deadzone.
+            // Duplicate joypad resources so project/default resources stay intact.
+            InputMap.ActionEraseEvents(action);
+            foreach (var binding in events)
+            {
+                if (binding is InputEventJoypadButton or InputEventJoypadMotion)
+                {
+                    var anyController = (InputEvent)binding.Duplicate();
+                    anyController.Device = -1;
+                    InputMap.ActionAddEvent(action, anyController);
+                }
+                else InputMap.ActionAddEvent(action, binding);
+            }
+        }
+    }
     
     public override void _Ready()
     {

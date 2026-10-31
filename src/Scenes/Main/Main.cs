@@ -22,6 +22,8 @@ public partial class Main : Control
 		if (Engine.IsEditorHint())
 			return;
 
+		InputActions.ConfigureJoypadActions();
+
 		SoundEffects? soundEffects = null;
 		foreach (var child in GetChildren())
 		{
