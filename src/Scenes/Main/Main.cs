@@ -76,7 +76,8 @@ public partial class Main : Control
         try
         {
             var session = await WolfApi.GetSession();
-            if (!IsInstanceValid(this) || !IsInsideTree()) return;
+            // Keep the last valid status during a temporary request failure.
+            if (session is null || !IsInstanceValid(this) || !IsInsideTree()) return;
             var label = GetNode<Label>("Content/Footer/MarginContainer/HBoxContainer/GpuStatus");
             label.Visible = session?.Gpu is not null;
             label.Text = session?.Gpu?.StatusText() ?? "";
@@ -85,9 +86,7 @@ public partial class Main : Control
         }
         catch (System.Exception e)
         {
-            if (IsInstanceValid(this) && IsInsideTree())
-                GetNode<Label>("Content/Footer/MarginContainer/HBoxContainer/GpuStatus").Visible = false;
-            Logger.LogDebug("GPU status unavailable: {0}", e.Message);
+            Logger.LogDebug("GPU status refresh failed; keeping previous readings: {0}", e.Message);
         }
         finally { _gpuStatusPending = false; }
     }

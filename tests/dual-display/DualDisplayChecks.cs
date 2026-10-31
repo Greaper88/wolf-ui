@@ -33,7 +33,10 @@ public partial class DualDisplayChecks : Node
         {
             lobbies = lobbies ?? [],
             sessions = new[] { new { client_id = "dual-display-fixture", video_width = 1920, video_height = 1080,
-                video_refresh_rate = 60, audio_channel_count = 2, client_settings = new { }, dual_display = config } }
+                video_refresh_rate = 60, audio_channel_count = 2, client_settings = new { }, dual_display = config,
+                cpu_placement = new { numa_node = 1, cpu_ids = new[] { 1 } },
+                gpu = new { id = "fixture-gpu", name = "NUMA fixture GPU", render_node = "/dev/dri/renderD128",
+                    numa_node = 1, cpu_ids = new[] { 1 }, memory_placement = new { mode = "preferred", nodes = new[] { 1 } } } } }
         }));
         File.Move(next, _fixture + "/state.json", true);
     }
@@ -88,6 +91,9 @@ public partial class DualDisplayChecks : Node
             _main.UserList.GetNode<Container>("%UserContainer").GetChildren().OfType<Profile>().Single(p => p.Id == "alice").EmitSignal(Button.SignalName.Pressed);
             await Wait(() => ((Control)_main.AppList).Visible && _main.HeaderLabel.Text == "Select Application" &&
                 _main.AppList.GetNode<GridContainer>("%AppGrid").GetChildCount() == 5, "app picker loaded");
+            await Wait(() => _main.GetNode<Label>("Content/Footer/MarginContainer/HBoxContainer/GpuStatus").Text.Contains("NUMA fixture GPU"),
+                "additive NUMA session fields preserve GPU status and app loading");
+            Check(true, "additive NUMA session and GPU objects deserialize without losing existing status");
 
             ClearRequests();
             Tile("Steam").MenuButtonStart.EmitSignal(Button.SignalName.Pressed);
