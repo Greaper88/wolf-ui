@@ -1,5 +1,6 @@
 using Godot;
 using Godot.Collections;
+using System;
 
 namespace WolfUI;
 
@@ -25,6 +26,9 @@ public partial class ControllerMap : Resource
     [Export]
     Dictionary<ControllerType, Texture2D> Back;
     private ControllerType _controller = ControllerType.None;
+    private int? _activeDevice;
+    private readonly Func<Array<int>> _connectedJoypads;
+    private readonly Func<int, string> _joyName;
     private ControllerType UsedController
     {
         get => _controller;
@@ -38,48 +42,59 @@ public partial class ControllerMap : Resource
     public ControllerType Controller => UsedController;
 
 #nullable disable // Export Variables are Godots Job
-    public ControllerMap()
+    public ControllerMap() : this(Input.GetConnectedJoypads, Input.GetJoyName)
     {
         Input.JoyConnectionChanged += JoyConnectionChanged;
     }
+
+    internal ControllerMap(Func<Array<int>> connectedJoypads, Func<int, string> joyName)
+    {
+        _connectedJoypads = connectedJoypads;
+        _joyName = joyName;
+    }
 #nullable enable
 
-    private void JoyConnectionChanged(long deviceId, bool connected)
+    private void UseJoypad(int deviceId)
     {
-        /*
-        GD.Print(Input.GetJoyName((int)deviceID));
-        var info = Input.GetJoyInfo((int)deviceID);
-        GD.Print($"{info} ---- {(connected ? "CONNECTED" : "DISCONECTED")}");
-        */
-        /*
-        { "vendor_id": 1406, "product_id": 8201, "raw_name": "Wolf Nintendo (virtual) pad" }
-        { "vendor_id": 1118, "product_id": 746, "raw_name": "Wolf X-Box One (virtual) pad" }
-        { "vendor_id": 1356, "product_id": 3302, "raw_name": "Wolf DualSense (virtual) pad" }
-        */
+        _activeDevice = deviceId;
+        UsedController = _joyName(deviceId) switch
+        {
+            "Xbox 360 Controller" => ControllerType.XBox,
+            "Wolf X-Box One (virtual) pad" => ControllerType.XBox,
+            "Wolf DualSense (virtual) pad" => ControllerType.PS,
+            "Wolf Nintendo (virtual) pad" => ControllerType.Switch,
+            "Nintendo Switch Pro Controller" => ControllerType.Switch,
+            _ => ControllerType.XBox,
+        };
+    }
 
+    internal void JoyConnectionChanged(long deviceId, bool connected)
+    {
         var oldController = UsedController;
-
+        var connectedControllers = _connectedJoypads();
         if (connected)
         {
-            UsedController = Input.GetJoyName((int)deviceId) switch
-            {
-                "Xbox 360 Controller" => ControllerType.XBox,
-                "Wolf X-Box One (virtual) pad" => ControllerType.XBox,
-                "Wolf DualSense (virtual) pad" => ControllerType.PS,
-                "Wolf Nintendo (virtual) pad" => ControllerType.Switch,
-                "Nintendo Switch Pro Controller" => ControllerType.Switch,
-                _ => ControllerType.XBox,
-            };
+            // Device is a stable Godot ID, not an index in GetConnectedJoypads().
+            // A queued input/connection event may outlive a device's removal.
+            if (deviceId < 0 || deviceId > int.MaxValue || !connectedControllers.Contains((int)deviceId)) return;
+            UseJoypad((int)deviceId);
         }
-        if (!connected)
+        else if (_activeDevice == deviceId)
         {
-            var connectedController = Input.GetConnectedJoypads();
-            if (connectedController.Count == 0) UsedController = ControllerType.None;
+            _activeDevice = null;
+            foreach (var remaining in connectedControllers)
+            {
+                if (remaining == deviceId) continue;
+                _activeDevice = remaining;
+                break;
+            }
+            if (_activeDevice is { } replacement) UseJoypad(replacement);
+            else UsedController = ControllerType.None;
         }
 
         if (UsedController == oldController) return;
         
-        Logger.LogInformation("{0} detected", Input.GetJoyName((int)deviceId));
+        Logger.LogInformation("Controller icons changed to {0}", UsedController);
         EmitSignalIconSetChanged();
     }
 
@@ -106,13 +121,13 @@ public partial class ControllerMap : Resource
         {
             case InputEventMouseMotion or InputEventMouseButton or InputEventKey:
             {
+                _activeDevice = null;
                 UsedController = ControllerType.None;
                 break;
             }
             case InputEventJoypadButton or InputEventJoypadMotion:
             {
-                var connectedController = Input.GetConnectedJoypads();
-                JoyConnectionChanged(connectedController[@event.Device], true);
+                JoyConnectionChanged(@event.Device, true);
                 return;
             }
         }
