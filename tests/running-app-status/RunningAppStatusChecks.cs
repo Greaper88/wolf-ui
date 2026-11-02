@@ -123,11 +123,13 @@ public partial class RunningAppStatusChecks : Node
     private async Task CheckSelectedProfileSharedJoin()
     {
         const string lobbyId = "shared-pin-locked";
-        ApiEvent("CreateLobbyEvent", new
+        var lockedLobby = new
         {
             id = lobbyId, name = "Shared game", profile_id = "bob", multi_user = true,
             pin_required = true, connected_sessions = Array.Empty<string>()
-        });
+        };
+        SetState(new object[] { lockedLobby });
+        ApiEvent("CreateLobbyEvent", lockedLobby);
         await Wait(() => SharedTiles.Any(tile => tile.Name == lobbyId), "PIN-locked shared lobby loaded");
         File.Delete(_fixture + "/joined.json");
         var tile = SharedTiles.Single(tile => tile.Name == lobbyId);
@@ -148,6 +150,7 @@ public partial class RunningAppStatusChecks : Node
                 .SequenceEqual(new[] { 2, 4, 6, 8 }),
             "shared lobby PIN dialog forwards the entered fixture PIN");
         await Wait(() => !_main.TopLayer.GetChildren().OfType<PinInput>().Any(), "shared PIN dialog closed");
+        await Wait(() => !tile.GetNode<Button>("%JoinButton").Disabled, "completed shared join released its button");
         File.Delete(_fixture + "/joined.json");
         tile.GetNode<Button>("%JoinButton").EmitSignal(Button.SignalName.Pressed);
         await CancelPin();
