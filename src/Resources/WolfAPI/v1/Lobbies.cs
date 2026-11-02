@@ -52,7 +52,9 @@ public partial class WolfApi
     {
         var lobby = new LobbyJoin()
         {
-            ProfileId = ActiveProfile.Id,
+            // Shared lobbies are also available on the front page, before profile selection.
+            // The server still enforces profile ownership for private apps and any lobby PIN.
+            ProfileId = ActiveProfile?.Id,
             LobbyId = lobbyId,
             MoonlightSessionId = sessionId,
             Pin = pin

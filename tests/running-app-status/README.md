@@ -16,3 +16,8 @@ Coverage includes live `profile_id` events, reconnect snapshots with different G
 metadata, missed events, failed/stale refreshes, profile ownership, a reused app ID
 returned without a create event, and successful/failed Stop requests. The original
 code fails the live-event check before the periodic refresh can hide the failure.
+Co-op checks also cover source-session fields, visible join refusals, retaining the running
+app after a refusal, and preventing duplicate co-op launches.
+Front-page lobby checks cover joining without a selected profile, recovery from
+missed create/stop events, failed snapshots, duplicate entries, membership event
+field order, and callback cleanup after removing an entry.

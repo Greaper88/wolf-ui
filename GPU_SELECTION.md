@@ -19,7 +19,7 @@ available on hover. PCI addresses and encoder utilization are not displayed. Mis
 telemetry or codecs remain unknown; the UI never substitutes encoder load for GPU usage.
 The companion server supplies `gpu_percent` and `codec` and resolves device names.
 
-Single-user app launches send
+Private and co-op app launches send
 the source session and selected profile to Wolf. Persistent apps are matched by profile and
 state folder; reconnecting from another device joins the existing app on its original GPU.
 Join failures display the server explanation instead of treating every failure as a full lobby.
@@ -28,7 +28,10 @@ Current limitations:
 
 - Automatic GPU routing uses VA hardware encoders, tested with Mesa on AMD. NVIDIA/NVENC
   automatic routing is not integrated.
-- Single-user persistent apps are supported; simultaneous multi-user lobby sharing is not.
+- Co-op lobbies allow simultaneous viewers on the app's pinned GPU. The companion server reuses
+  compatible encoders and admits another encoder for different settings when capacity allows.
+  Each encoder stops after its last viewer leaves; an empty persistent lobby keeps only the app
+  and its GPU assignment. The lobby PIN still applies; private apps remain owner-only.
 - Automatic pipelines use verified zero-copy where available, otherwise CPU-buffer
   conversion with hardware encoding (unless the admin requires zero-copy).
 - AMD encoder utilization is currently unknown in the selector. The footer's other-user count
@@ -39,3 +42,6 @@ Current limitations:
 Paired tests cover separate profile Steam instances, reconnects, cross-device persistent
 apps, GPU metadata and the footer layout. Promotion to the primary branch preserves the
 current VA/Mesa feature scope; automatic NVIDIA routing and vGPU management are future work.
+
+Co-op creation and joining display codec/capacity errors without losing the app's running state.
+Selecting an existing PIN-protected co-op app from its owner's app tile also asks for the lobby PIN.

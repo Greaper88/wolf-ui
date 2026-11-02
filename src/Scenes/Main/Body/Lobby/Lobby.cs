@@ -60,7 +60,6 @@ public partial class Lobby : Control
 
     private void OnJoinLobby(string lobbyId)
     {
-        GD.Print(lobbyId);
         if(lobbyId != _lobby?.Id) return;
         PlayerCountLabel.Text = $"{int.Parse(PlayerCountLabel.Text) + 1}";
     }
@@ -68,7 +67,22 @@ public partial class Lobby : Control
     private void OnLeaveLobby(string lobbyId)
     {
         if(lobbyId != _lobby?.Id) return;
-        PlayerCountLabel.Text = $"{int.Parse(PlayerCountLabel.Text) - 1}";
+        PlayerCountLabel.Text = $"{System.Math.Max(0, int.Parse(PlayerCountLabel.Text) - 1)}";
+    }
+
+    internal void RefreshLobby(Resources.WolfAPI.Lobby lobby)
+    {
+        _lobby = lobby;
+        AppNameLabel.Text = lobby.Name ?? "";
+        CreatorNameLabel.Text = lobby.OwnerProfileId ?? "";
+        PlayerCountLabel.Text = lobby.ConnectedSessions?.Count.ToString() ?? "0";
+    }
+
+    public override void _ExitTree()
+    {
+        if (Engine.IsEditorHint()) return;
+        WolfApi.Singleton.LobbyJoinEvent -= OnJoinLobby;
+        WolfApi.Singleton.LobbyLeaveEvent -= OnLeaveLobby;
     }
     
     public override void _Process(double delta)
@@ -98,9 +112,10 @@ public partial class Lobby : Control
         }
 
         var error = await WolfApi.JoinLobby(Name, WolfApi.SessionId, pin);
-        if (error is null || error.Success) return;
-        GD.Print(error.Error);
-        await QuestionDialogue.OpenDialogue($"{error.Error}", $"Could not Join Lobby:\n{error.Error}.", new Dictionary<string, bool>()
+        if (error?.Success == true) return;
+        var message = error?.Error ?? "Wolf did not respond.";
+        GD.Print(message);
+        await QuestionDialogue.OpenDialogue("Could not join lobby", message, new Dictionary<string, bool>()
         {
             {"OK", true}
         });

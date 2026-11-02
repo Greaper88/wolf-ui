@@ -176,9 +176,24 @@ public partial class WolfApi : Resource
         return;
 
         void InvokeLobbyCreated(string dataJson) => InvokeEvent(LobbyCreatedEvent, dataJson);
-        void InvokeLobbyStopped(string dataJson) => LobbyStoppedEvent?.Invoke(this, dataJson.TrimPrefix("{\"lobby_id\":\"").TrimSuffix("\"}"));
-        void InvokeLobbyJoin(string dataJson) => EmitSignalLobbyJoinEvent(dataJson[..dataJson.LastIndexOf(',')].TrimPrefix("{\"lobby_id\":\"").TrimSuffix("\""));
-        void InvokeLobbyLeave(string dataJson) => EmitSignalLobbyLeaveEvent(dataJson[..dataJson.LastIndexOf(',')].TrimPrefix("{\"lobby_id\":\"").TrimSuffix("\""));
+        void InvokeLobbyStopped(string dataJson)
+        {
+            if (ReadLobbyId(dataJson) is { } id) LobbyStoppedEvent?.Invoke(this, id);
+        }
+        void InvokeLobbyJoin(string dataJson)
+        {
+            if (ReadLobbyId(dataJson) is { } id) EmitSignalLobbyJoinEvent(id);
+        }
+        void InvokeLobbyLeave(string dataJson)
+        {
+            if (ReadLobbyId(dataJson) is { } id) EmitSignalLobbyLeaveEvent(id);
+        }
+        static string? ReadLobbyId(string dataJson)
+        {
+            using var json = JsonDocument.Parse(dataJson);
+            return json.RootElement.TryGetProperty("lobby_id", out var id) && id.ValueKind == JsonValueKind.String
+                ? id.GetString() : null;
+        }
     }
 
     
