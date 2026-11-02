@@ -21,6 +21,18 @@ The app picker uses the established persistent-app model: selecting an app that
 already has a persistent lobby reconnects that existing app to the chosen display.
 Starting two instances of the same persistent app is a separate lifecycle feature.
 
+Moonlight's native dual-app picker and Wolf-UI use the same host-owned slots and
+persistent app identities. A native selection therefore appears as an existing
+running app in Wolf-UI. Owned producer-switch events refresh the display status;
+the existing periodic snapshot remains a fallback. Replacement choices name the
+app currently assigned to each display, using the session's lobby IDs and the
+lobby snapshot rather than maintaining a second assignment map.
+
+Returning one display to the launcher leaves the other assignment intact. The
+previous app retains its normal persistent lifecycle and can be reconnected from
+either interface. Hosts without native picker support keep the existing Wolf-UI
+flow and request formats.
+
 ## Additive API contract
 
 The current session returned by `GET /api/v1/sessions` can contain:
