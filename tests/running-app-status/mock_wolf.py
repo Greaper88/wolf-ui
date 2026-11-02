@@ -66,6 +66,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # Existing persistent app: deliberately no create event.
             self.reply(dict(success=True, lobby_id="deduplicated-app"))
         elif self.path.endswith("/lobbies/join"):
+            # Only synthetic request data from the private regression socket is captured.
+            # Publish atomically so the Godot checks never read a partial JSON document.
+            capture = root + "/joined.next.json"
+            with open(capture, "w") as f:
+                json.dump(body, f)
+            os.replace(capture, root + "/joined.json")
             self.reply(dict(success=True))
         elif self.path.endswith("/lobbies/stop"):
             with open(root + "/stopped.json", "w") as f:

@@ -16,3 +16,10 @@ Coverage includes live `profile_id` events, reconnect snapshots with different G
 metadata, missed events, failed/stale refreshes, profile ownership, a reused app ID
 returned without a create event, and successful/failed Stop requests. The original
 code fails the live-event check before the periodic refresh can hide the failure.
+
+Shared-lobby coverage first presses the real front-page Join button without
+selecting a profile and verifies that the request reaches the fixture without
+claiming the owner's identity. It then checks selected-profile joins through the
+real PIN dialog, request identity/PIN forwarding, and join/leave event IDs and
+player counts with extra or reordered fields. All PINs and profiles in these
+checks are synthetic fixture values.

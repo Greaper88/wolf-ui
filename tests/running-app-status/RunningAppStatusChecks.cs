@@ -58,6 +58,95 @@ public partial class RunningAppStatusChecks : Node
     private Task Refresh() => (Task)typeof(AppList).GetMethod("RefreshRunningApps",
         BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(List, null)!;
 
+    private IEnumerable<WolfUI.Lobby> SharedTiles => _main.UserList
+        .GetNode<Container>("Profiles/LobbiesContainer/%Lobbies").GetChildren().OfType<WolfUI.Lobby>();
+
+    private async Task CheckAnonymousSharedJoin()
+    {
+        const string lobbyId = "shared-front-page";
+        await Wait(() => SharedTiles.Any(tile => tile.Name == lobbyId), "front-page shared lobby loaded");
+        Check(WolfApi.ActiveProfile is null, "front-page join starts without selecting a profile");
+        var tile = SharedTiles.Single(tile => tile.Name == lobbyId);
+        tile.GetNode<Button>("%JoinButton").EmitSignal(Button.SignalName.Pressed);
+        await Wait(() => File.Exists(_fixture + "/joined.json"), "anonymous shared join reached Wolf");
+        using var joined = JsonDocument.Parse(File.ReadAllText(_fixture + "/joined.json"));
+        var request = joined.RootElement;
+        Check(request.GetProperty("lobby_id").GetString() == lobbyId &&
+            request.GetProperty("moonlight_session_id").GetString() == WolfApi.SessionId,
+            "front-page Join button sends the selected lobby and current session");
+        Check(!request.TryGetProperty("profile_id", out var profile) || profile.ValueKind == JsonValueKind.Null,
+            "anonymous shared join does not impersonate the lobby owner");
+        Check(!request.TryGetProperty("pin", out var pin) || pin.ValueKind == JsonValueKind.Null,
+            "unlocked shared join does not invent a PIN");
+
+        var joinedIds = new List<string>();
+        var leftIds = new List<string>();
+        void OnJoined(string id) => joinedIds.Add(id);
+        void OnLeft(string id) => leftIds.Add(id);
+        WolfApi.Singleton.LobbyJoinEvent += OnJoined;
+        WolfApi.Singleton.LobbyLeaveEvent += OnLeft;
+        try
+        {
+            // Both schemas are intentionally reordered and include synthetic PIN data.
+            // The real lobby tile must receive only lobby_id, regardless of added fields.
+            var events = new object[]
+            {
+                new { profile_id = (string?)null, lobby_id = lobbyId,
+                    moonlight_session_id = 42, pin = new[] { 2, 4, 6, 8 } },
+                new { pin = new[] { 2, 4, 6, 8 }, moonlight_session_id = 43,
+                    lobby_id = lobbyId, profile_id = "bob" }
+            };
+            var originalPlayers = int.Parse(tile.GetNode<Label>("%PlayerCountLabel").Text);
+            foreach (var data in events)
+                ApiEvent("JoinLobbyEvent", data);
+            Check(joinedIds.Count == 2 && joinedIds.All(id => id == lobbyId),
+                "join events extract lobby ID with anonymous/selected profiles, PINs and reordered fields");
+            Check(tile.GetNode<Label>("%PlayerCountLabel").Text == (originalPlayers + 2).ToString(),
+                "shared lobby player count updates for both join event schemas");
+            foreach (var data in events)
+                ApiEvent("LeaveLobbyEvent", data);
+            Check(leftIds.Count == 2 && leftIds.All(id => id == lobbyId),
+                "leave events extract lobby ID independently of extra fields and their order");
+            Check(tile.GetNode<Label>("%PlayerCountLabel").Text == originalPlayers.ToString(),
+                "shared lobby player count returns to its original value after leave events");
+        }
+        finally
+        {
+            WolfApi.Singleton.LobbyJoinEvent -= OnJoined;
+            WolfApi.Singleton.LobbyLeaveEvent -= OnLeft;
+        }
+    }
+
+    private async Task CheckSelectedProfileSharedJoin()
+    {
+        const string lobbyId = "shared-pin-locked";
+        ApiEvent("CreateLobbyEvent", new
+        {
+            id = lobbyId, name = "Shared game", profile_id = "bob", multi_user = true,
+            pin_required = true, connected_sessions = Array.Empty<string>()
+        });
+        await Wait(() => SharedTiles.Any(tile => tile.Name == lobbyId), "PIN-locked shared lobby loaded");
+        File.Delete(_fixture + "/joined.json");
+        var tile = SharedTiles.Single(tile => tile.Name == lobbyId);
+        tile.GetNode<Button>("%JoinButton").EmitSignal(Button.SignalName.Pressed);
+        await Wait(() => _main.TopLayer.GetChildren().OfType<PinInput>().Any(), "shared lobby PIN dialog shown");
+        var input = _main.TopLayer.GetChildren().OfType<PinInput>().Single();
+        input.GetNode<LineEdit>("PanelContainer/MarginContainer/VBoxContainer/LineEdit").Text = "2468";
+        input.GetNode<Button>("PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/ButtonConfirm")
+            .EmitSignal(Button.SignalName.Pressed);
+        await Wait(() => File.Exists(_fixture + "/joined.json"), "selected-profile shared join reached Wolf");
+        using var joined = JsonDocument.Parse(File.ReadAllText(_fixture + "/joined.json"));
+        var request = joined.RootElement;
+        Check(request.GetProperty("lobby_id").GetString() == lobbyId &&
+            request.GetProperty("moonlight_session_id").GetString() == WolfApi.SessionId &&
+            request.GetProperty("profile_id").GetString() == "alice",
+            "selected-profile shared join sends the viewer profile instead of the owner");
+        Check(request.GetProperty("pin").EnumerateArray().Select(digit => digit.GetInt32())
+                .SequenceEqual(new[] { 2, 4, 6, 8 }),
+            "shared lobby PIN dialog forwards the entered fixture PIN");
+        await Wait(() => !_main.TopLayer.GetChildren().OfType<PinInput>().Any(), "shared PIN dialog closed");
+    }
+
     private async Task SelectProfile(string id)
     {
         ((Control)_main.UserList).Visible = true;
@@ -74,9 +163,17 @@ public partial class RunningAppStatusChecks : Node
     {
         try
         {
+            SetState(new object[] { new
+            {
+                id = "shared-front-page", name = "Shared game", started_by_profile_id = "bob",
+                multi_user = true, connected_sessions = new[] { "other-viewer" }
+            } });
             _main = GD.Load<PackedScene>("res://Scenes/Main/Main.tscn").Instantiate<Main>();
             AddChild(_main);
+            await CheckAnonymousSharedJoin();
+            SetState(Array.Empty<object>());
             await SelectProfile("alice");
+            await CheckSelectedProfileSharedJoin();
             Check(!Tile.MenuButtonStop.Visible, "idle app starts without Stop");
 
             SetState(new[] { Lobby("event-app") });

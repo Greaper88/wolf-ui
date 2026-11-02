@@ -52,7 +52,7 @@ public partial class WolfApi
     {
         var lobby = new LobbyJoin()
         {
-            ProfileId = ActiveProfile.Id,
+            ProfileId = ActiveProfile?.Id,
             LobbyId = lobbyId,
             MoonlightSessionId = sessionId,
             Pin = pin

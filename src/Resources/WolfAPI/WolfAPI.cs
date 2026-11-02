@@ -177,8 +177,14 @@ public partial class WolfApi : Resource
 
         void InvokeLobbyCreated(string dataJson) => InvokeEvent(LobbyCreatedEvent, dataJson);
         void InvokeLobbyStopped(string dataJson) => LobbyStoppedEvent?.Invoke(this, dataJson.TrimPrefix("{\"lobby_id\":\"").TrimSuffix("\"}"));
-        void InvokeLobbyJoin(string dataJson) => EmitSignalLobbyJoinEvent(dataJson[..dataJson.LastIndexOf(',')].TrimPrefix("{\"lobby_id\":\"").TrimSuffix("\""));
-        void InvokeLobbyLeave(string dataJson) => EmitSignalLobbyLeaveEvent(dataJson[..dataJson.LastIndexOf(',')].TrimPrefix("{\"lobby_id\":\"").TrimSuffix("\""));
+        void InvokeLobbyJoin(string dataJson) => EmitSignalLobbyJoinEvent(ReadLobbyId(dataJson));
+        void InvokeLobbyLeave(string dataJson) => EmitSignalLobbyLeaveEvent(ReadLobbyId(dataJson));
+
+        static string ReadLobbyId(string dataJson)
+        {
+            using var data = JsonDocument.Parse(dataJson);
+            return data.RootElement.GetProperty("lobby_id").GetString() ?? string.Empty;
+        }
     }
 
     
@@ -286,7 +292,9 @@ public partial class WolfApi : Resource
         }
         catch (Exception e)
         {
-            Logger.LogError("Error GET request failed: {0} Message:{1} - {2}", url, e.GetType(), e.Message);
+            var cause = e.GetBaseException();
+            Logger.LogError("Error GET request failed: {0} Message:{1} - {2}; Cause:{3} - {4}",
+                url, e.GetType(), e.Message, cause.GetType(), cause.Message);
             return default(T);
         }
 
