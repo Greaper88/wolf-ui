@@ -317,10 +317,12 @@ public partial class RunningAppStatusChecks : Node
             ApiEvent("JoinLobbyEvent", new { lobby_id = "shared-test" });
             ApiEvent("LeaveLobbyEvent", new { lobby_id = "shared-test" });
             Check(entries.GetChildCount() == 0, "removed lobby widgets unsubscribe from membership events");
-            SetState(new object[] { new { id = "owned-locked-steam", name = "Steam", started_by_profile_id = "alice",
-                runner_state_folder = "profile-data/alice/WolfSteam", multi_user = true, pin_required = true } });
+            var ownedLocked = new Resources.WolfAPI.Lobby { Id = "owned-locked-steam", Name = "Steam", StartedByProfileId = "alice",
+                RunnerStateFolder = "profile-data/alice/WolfSteam", MultiUser = true, PinRequired = true };
+            SetState(new object[] { ownedLocked });
             await Refresh();
-            await Wait(() => Tile.MenuButtonStart.Text == "Connect", "owned shared app restored for PIN cancellation");
+            Tile.RefreshRunningLobby(new[] { ownedLocked });
+            await Wait(() => Tile.PlayingHint.Visible && !Tile.MenuButtonStart.Disabled, "owned shared app restored for PIN cancellation");
             File.Delete(_fixture + "/joined.json");
             Tile.MenuButtonStart.EmitSignal(Button.SignalName.Pressed);
             await CancelPin();
@@ -329,6 +331,7 @@ public partial class RunningAppStatusChecks : Node
 
             SetState(Array.Empty<object>());
             await Refresh();
+            Tile.RefreshRunningLobby(Array.Empty<Resources.WolfAPI.Lobby>());
             await Wait(() => !Tile.MenuButtonCoop.Disabled, "empty snapshot allows a new co-op app");
             File.Delete(_fixture + "/created.json");
             Tile.MenuButtonCoop.EmitSignal(Button.SignalName.Pressed);
