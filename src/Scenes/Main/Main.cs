@@ -1,4 +1,5 @@
 using Godot;
+using System.Collections.Generic;
 using Resources.WolfAPI;
 using Skerga.GodotNodeUtilGenerator;
 
@@ -47,6 +48,7 @@ public partial class Main : Control
 		AddChild(time);
 
 		WolfApi.Init();
+		WolfApi.Singleton.DisplayAssignmentsChanged += OnDisplayAssignmentsChanged;
 
         var dualDisplayStatus = new Label
         {
@@ -70,10 +72,25 @@ public partial class Main : Control
 	
 
     private bool _gpuStatusPending;
+    private bool _sessionRefreshQueued;
+
+    private void OnDisplayAssignmentsChanged() => RefreshGpuStatus();
+
+    public override void _ExitTree()
+    {
+        if (!Engine.IsEditorHint())
+            WolfApi.Singleton.DisplayAssignmentsChanged -= OnDisplayAssignmentsChanged;
+        base._ExitTree();
+    }
 
     private async void RefreshGpuStatus()
     {
-        if (_gpuStatusPending || !IsInsideTree()) return;
+        if (!IsInsideTree()) return;
+        if (_gpuStatusPending)
+        {
+            _sessionRefreshQueued = true;
+            return;
+        }
         _gpuStatusPending = true;
         try
         {
@@ -84,20 +101,31 @@ public partial class Main : Control
             label.Visible = session?.Gpu is not null;
             label.Text = session?.Gpu?.StatusText() ?? "";
             label.TooltipText = label.Text;
-            UpdateDualDisplayStatus(session);
+            var lobbies = session.DualDisplay?.Mode == "dual_app" && session.DualDisplay.IsSupported
+                ? await WolfApi.GetLobbiesSnapshot() : null;
+            if (!IsInstanceValid(this) || !IsInsideTree()) return;
+            UpdateDualDisplayStatus(session, lobbies);
         }
         catch (System.Exception e)
         {
             Logger.LogDebug("GPU status refresh failed; keeping previous readings: {0}", e.Message);
         }
-        finally { _gpuStatusPending = false; }
+        finally
+        {
+            _gpuStatusPending = false;
+            if (_sessionRefreshQueued)
+            {
+                _sessionRefreshQueued = false;
+                RefreshGpuStatus();
+            }
+        }
     }
 
-    internal void UpdateDualDisplayStatus(Session? session)
+    internal void UpdateDualDisplayStatus(Session? session, IReadOnlyList<Resources.WolfAPI.Lobby>? lobbies = null)
     {
         var label = GetNodeOrNull<Label>("Content/Footer/MarginContainer/HBoxContainer/DualDisplayStatus");
         if (label is null) return;
-        label.Text = DualDisplayLauncher.StatusText(session?.DualDisplay);
+        label.Text = DualDisplayLauncher.StatusText(session?.DualDisplay, lobbies);
         label.Visible = label.Text.Length > 0;
         label.TooltipText = label.Text;
     }

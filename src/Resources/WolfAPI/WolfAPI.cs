@@ -157,7 +157,7 @@ public partial class WolfApi : Resource
             { "wolf::core::events::RTPVideoPingEvent", (_)=>{}},
             { "wolf::core::events::ResumeStreamEvent", (_)=>{}},
             { "wolf::core::events::PauseStreamEvent", (_)=>{}},
-            { "wolf::core::events::SwitchStreamProducerEvents", (_)=>{}},
+            { "wolf::core::events::SwitchStreamProducerEvents", InvokeDisplayAssignmentsChanged },
             { "wolf::core::events::JoinLobbyEvent", InvokeLobbyJoin},
             { "wolf::core::events::LeaveLobbyEvent", InvokeLobbyLeave},
             { "wolf::core::events::CreateLobbyEvent", InvokeLobbyCreated },
@@ -179,6 +179,12 @@ public partial class WolfApi : Resource
         void InvokeLobbyStopped(string dataJson) => LobbyStoppedEvent?.Invoke(this, dataJson.TrimPrefix("{\"lobby_id\":\"").TrimSuffix("\"}"));
         void InvokeLobbyJoin(string dataJson) => EmitSignalLobbyJoinEvent(ReadLobbyId(dataJson));
         void InvokeLobbyLeave(string dataJson) => EmitSignalLobbyLeaveEvent(ReadLobbyId(dataJson));
+        void InvokeDisplayAssignmentsChanged(string dataJson)
+        {
+            using var data = JsonDocument.Parse(dataJson);
+            if (data.RootElement.TryGetProperty("session_id", out var sessionId) && sessionId.ToString() == SessionId)
+                EmitSignalDisplayAssignmentsChanged();
+        }
 
         static string ReadLobbyId(string dataJson)
         {
@@ -313,4 +319,6 @@ public partial class WolfApi : Resource
     public delegate void LobbyJoinEventEventHandler(string lobbyId);    
     [Signal]
     public delegate void LobbyLeaveEventEventHandler(string lobbyId);
+    [Signal]
+    public delegate void DisplayAssignmentsChangedEventHandler();
 }

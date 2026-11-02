@@ -66,13 +66,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
             f.write(json.dumps(dict(path=self.path, body=body)) + "\n")
         if self.path.endswith("/lobbies/create"):
             # Existing persistent app: deliberately no create event.
+            capture = root + "/created.next.json"
+            with open(capture, "w") as f:
+                json.dump(body, f)
+            os.replace(capture, root + "/created.json")
             self.reply(dict(success=True, lobby_id=current.get("created_id", "deduplicated-app")))
         elif self.path.endswith("/lobbies/join"):
             capture = root + "/joined.next.json"
             with open(capture, "w") as f:
                 json.dump(body, f)
             os.replace(capture, root + "/joined.json")
-            self.reply(dict(success=True))
+            self.reply(dict(success=not current.get("fail_join"), error="GPU too busy: shared lobby fixture"))
         elif self.path.endswith("/lobbies/stop"):
             with open(root + "/stopped.json", "w") as f:
                 json.dump(body, f)

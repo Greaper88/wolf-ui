@@ -190,6 +190,59 @@ public partial class DualDisplayChecks : Node
                 Requests("/lobbies/join").Single().GetProperty("display_id").GetInt32() == 0,
                 "persistent app reconnect routes the existing app to the selected free display");
 
+            // A native Moonlight picker writes the same host slots and creates
+            // the same persistent profile app identities as Wolf-UI.
+            var nativeAssignments = JsonSerializer.Deserialize<DualDisplay>(JsonSerializer.Serialize(Config()))!;
+            nativeAssignments.Slots[0].State = nativeAssignments.Slots[1].State = "running";
+            nativeAssignments.Slots[0].AppId = "native-steam";
+            nativeAssignments.Slots[1].AppId = "native-kodi";
+            var nativeApps = new[]
+            {
+                new Resources.WolfAPI.Lobby { Id = "native-steam", Name = "Steam", StartedByProfileId = "alice",
+                    RunnerStateFolder = "profile-data/alice/WolfSteam" },
+                new Resources.WolfAPI.Lobby { Id = "native-kodi", Name = "Kodi", StartedByProfileId = "alice",
+                    RunnerStateFolder = "profile-data/alice/WolfKodi" }
+            };
+            State(nativeAssignments, nativeApps.Cast<object>().ToArray());
+            await ((AppList)_main.AppList).RefreshRunningApps();
+            Check(Tile("Steam").MenuButtonStart.Text == "Connect" && Tile("Kodi").MenuButtonStart.Text == "Connect",
+                "native-started apps are recognized as the existing persistent apps");
+            Check(DualDisplayLauncher.TargetLabel(nativeAssignments, nativeAssignments.Displays[0], nativeApps).Contains("Replace Steam") &&
+                DualDisplayLauncher.TargetLabel(nativeAssignments, nativeAssignments.Displays[1], nativeApps).Contains("Replace Kodi"),
+                "replacement targets describe the apps currently assigned by Moonlight");
+            var routeSignals = 0;
+            void OnRouteChanged() => ++routeSignals;
+            WolfApi.Singleton.DisplayAssignmentsChanged += OnRouteChanged;
+            try
+            {
+                WolfApi.Singleton.EmitSignal(WolfApi.SignalName.ApiEvent,
+                    "wolf::core::events::SwitchStreamProducerEvents",
+                    JsonSerializer.Serialize(new { session_id = "other-client", interpipe_src_id = "native-steam" }));
+                Check(routeSignals == 0, "another client's assignments do not trigger the owned route event");
+                WolfApi.Singleton.EmitSignal(WolfApi.SignalName.ApiEvent,
+                    "wolf::core::events::SwitchStreamProducerEvents",
+                    JsonSerializer.Serialize(new { session_id = "dual-display-fixture", interpipe_src_id = "native-steam" }));
+                var status = _main.GetNode<Label>("Content/Footer/MarginContainer/HBoxContainer/DualDisplayStatus");
+                await Wait(() => status.Text == "Display 1: Steam · Display 2: Kodi", "native assignments reached the launcher footer");
+                Check(routeSignals == 1 && status.Text.Contains("Display 2: Kodi"),
+                    "native route events refresh Wolf-UI from authoritative host assignments");
+                nativeAssignments.Slots[0].State = "launcher";
+                nativeAssignments.Slots[0].AppId = null;
+                State(nativeAssignments, nativeApps.Cast<object>().ToArray());
+                WolfApi.Singleton.EmitSignal(WolfApi.SignalName.ApiEvent,
+                    "wolf::core::events::SwitchStreamProducerEvents",
+                    JsonSerializer.Serialize(new { session_id = "dual-display-fixture", interpipe_src_id = "dual-display-fixture" }));
+                await Wait(() => status.Text == "Display 1: Wolf-UI · Display 2: Kodi", "cleared native slot reached the launcher footer");
+                Check(nativeAssignments.FreeDisplays().Single().Id == 0 && status.Text.Contains("Display 2: Kodi"),
+                    "returning one native slot to the launcher preserves the other assignment");
+                ClearRequests();
+                await Start("Steam");
+                Check(Requests("/lobbies/create").Length == 0 && Requests("/lobbies/join").Single().GetProperty("display_id").GetInt32() == 0 &&
+                    Requests("/lobbies/join").Single().GetProperty("lobby_id").GetString() == "native-steam",
+                    "Wolf-UI reuses the native app when assigning the free display");
+            }
+            finally { WolfApi.Singleton.DisplayAssignmentsChanged -= OnRouteChanged; }
+
             var malformed = JsonSerializer.Deserialize<DualDisplay>(JsonSerializer.Serialize(Config()))!;
             malformed.Displays[1].Id = 0;
             Check(!malformed.IsSupported, "duplicate display IDs are rejected");

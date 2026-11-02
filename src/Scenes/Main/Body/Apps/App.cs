@@ -404,7 +404,9 @@ public partial class App : MarginContainer, IRestorable<App>
 				lobby!.Id = lobbyId;
 				(Main.Singleton.AppList as AppList)?.InvalidateLobbySnapshot();
 				SetRunningLobby(lobby);
-				var response = await WolfApi.JoinLobby(lobbyId, WolfApi.SessionId, displayId: target.DisplayId);
+                var pin = lobby.MultiUser && lobby.IsPinLocked ? await PinInput.RequestPin() : null;
+                if (lobby.MultiUser && lobby.IsPinLocked && pin is null) return;
+                var response = await WolfApi.JoinLobby(lobbyId, WolfApi.SessionId, pin, target.DisplayId);
 				if (response is null || !response.Success)
 				{
 					await QuestionDialogue.OpenDialogue("Could not enter app", response?.Error ?? "Wolf did not respond.", new Dictionary<string, bool>()
@@ -488,8 +490,8 @@ public partial class App : MarginContainer, IRestorable<App>
 					Width = target.Display?.Width ?? session.VideoWidth,
 					Height = target.Display?.Height ?? session.VideoHeight,
 					RefreshRate = target.Display?.Fps ?? session.VideoRefreshRate,
-					RunnerRenderNode = RenderNode,
-					WaylandRenderNode = RenderNode,
+                    RunnerRenderNode = session.Gpu?.RenderNode ?? RenderNode,
+                    WaylandRenderNode = session.Gpu?.RenderNode ?? RenderNode,
 					VideoProducerBufferCaps = System.Environment.GetEnvironmentVariable("WOLF_VIDEO_BUFFER_CAPS") ?? ""
 				},
 				AudioSettings = new AudioSettings
@@ -517,6 +519,10 @@ public partial class App : MarginContainer, IRestorable<App>
 			var lobbyId = await WolfApi.CreateLobby(lobby);
 			if (lobbyId is not null)
 			{
+                if (!IsInstanceValid(this) || !IsInsideTree()) return;
+                lobby.Id = lobbyId;
+                (Main.Singleton.AppList as AppList)?.InvalidateLobbySnapshot();
+                SetRunningLobby(lobby);
 				var response = await WolfApi.JoinLobby(lobbyId, WolfApi.SessionId, lobby.Pin, target.DisplayId);
 				if (response?.Success == true)
 				{
@@ -532,7 +538,7 @@ public partial class App : MarginContainer, IRestorable<App>
 		{
 			if (IsInstanceValid(this) && IsInsideTree())
 			{
-				MenuButtonCoop.Disabled = false;
+                MenuButtonCoop.Disabled = _runningLobby is not null;
 				AppButton.GrabFocus();
 			}
 		}

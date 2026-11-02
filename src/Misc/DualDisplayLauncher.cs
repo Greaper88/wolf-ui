@@ -40,8 +40,9 @@ public static class DualDisplayLauncher
         if (free.Count == 1)
             return new DisplayLaunchTarget(true, free[0].Id, free[0]);
 
+        var lobbies = free.Count == 0 ? await WolfApi.GetLobbiesSnapshot() : null;
         var choices = config.Displays.OrderBy(display => display.Id).ToDictionary(
-            display => display.Label + (config.IsRunning(display.Id) ? " · Replace app" : ""),
+            display => TargetLabel(config, display, lobbies),
             display => (int?)display.Id);
         choices.Add("Cancel", null);
         var message = free.Count == 2
@@ -52,12 +53,32 @@ public static class DualDisplayLauncher
         return new DisplayLaunchTarget(selected.HasValue, selected, config.GetDisplay(selected));
     }
 
-    public static string StatusText(DualDisplay? config)
+    private static string? AppName(DualDisplay config, int displayId, IReadOnlyList<Resources.WolfAPI.Lobby>? lobbies)
+    {
+        var slot = config.Slots.FirstOrDefault(slot => slot.DisplayId == displayId && slot.State == "running");
+        return slot?.AppId is { } id ? lobbies?.FirstOrDefault(lobby => lobby.Id == id)?.Name : null;
+    }
+
+    internal static string TargetLabel(DualDisplay config, StreamDisplay display, IReadOnlyList<Resources.WolfAPI.Lobby>? lobbies)
+    {
+        if (!config.IsRunning(display.Id)) return display.Label;
+        var name = AppName(config, display.Id, lobbies);
+        return display.Label + (string.IsNullOrWhiteSpace(name) ? " · Replace app" : $" · Replace {name}");
+    }
+
+    public static string StatusText(DualDisplay? config, IReadOnlyList<Resources.WolfAPI.Lobby>? lobbies = null)
     {
         if (config is null || !config.IsVideoMode) return "";
         if (!config.IsSupported) return "Two-display video unavailable on this server";
         if (config.Mode == "dual_monitor")
             return $"Extended desktop · {(config.Layout == "vertical" ? "Stacked" : "Side by side")} · Display {config.Primary + 1} primary";
+
+        // The session's slot IDs remain authoritative when Moonlight selects an
+        // app. Lobby names only decorate those IDs; they never assign a display.
+        if (lobbies is not null && config.Displays.Any(display => !string.IsNullOrWhiteSpace(AppName(config, display.Id, lobbies))))
+            return string.Join(" · ", config.Displays.OrderBy(display => display.Id).Select(display =>
+                $"Display {display.Id + 1}: " + (config.IsRunning(display.Id)
+                    ? AppName(config, display.Id, lobbies) ?? "App running" : "Wolf-UI")));
 
         var free = config.FreeDisplays();
         return free.Count switch

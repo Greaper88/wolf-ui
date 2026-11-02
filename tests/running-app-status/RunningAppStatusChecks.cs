@@ -24,12 +24,12 @@ public partial class RunningAppStatusChecks : Node
         connected_sessions = Array.Empty<string>(), gpu = new { render_node = gpu }
     };
 
-    private void SetState(object[] lobbies, bool fail = false, double delay = 0, bool failStop = false)
+    private void SetState(object[] lobbies, bool fail = false, double delay = 0, bool failStop = false, bool failJoin = false)
     {
         var tmp = _fixture + "/next.json";
         File.WriteAllText(tmp, JsonSerializer.Serialize(new
         {
-            lobbies, fail_lobbies = fail, delay_lobbies = delay, fail_stop = failStop,
+            lobbies, fail_lobbies = fail, delay_lobbies = delay, fail_stop = failStop, fail_join = failJoin,
             sessions = new[] { new { client_id = System.Environment.GetEnvironmentVariable("WOLF_SESSION_ID"),
                 video_width = 1920, video_height = 1080, video_refresh_rate = 60,
                 audio_channel_count = 2, client_settings = new { } } }
@@ -248,6 +248,58 @@ public partial class RunningAppStatusChecks : Node
             Check(stopped.RootElement.GetProperty("lobby_id").GetString() == "deduplicated-app",
                 "Stop targets the retained persistent app ID");
             Check(Tile.MenuButtonStart.Text == "Start", "stopped app returns to Start");
+            SetState(Array.Empty<object>(), fail: true, failJoin: true);
+            Tile.MenuButtonCoop.EmitSignal(Button.SignalName.Pressed);
+            await Wait(() => _main.TopLayer.GetChildren().OfType<QuestionDialogue>().Any(), "co-op PIN choice shown");
+            _main.TopLayer.GetChildren().OfType<QuestionDialogue>().Single()
+                .GetNode<Container>("%ButtonContainer").GetChildren().OfType<Button>().Single(b => b.Text == "No")
+                .EmitSignal(Button.SignalName.Pressed);
+            await Wait(() => File.Exists(_fixture + "/created.json") &&
+                File.ReadAllText(_fixture + "/created.json").Contains("\"multi_user\": true"), "co-op creation sent");
+            await Wait(() => _main.TopLayer.GetChildren().OfType<QuestionDialogue>().Any(), "co-op admission error shown");
+            Check(Tile.PlayingHint.Visible, "failed co-op join retains the running app");
+            using var created = JsonDocument.Parse(File.ReadAllText(_fixture + "/created.json"));
+            Check(created.RootElement.GetProperty("multi_user").GetBoolean() &&
+                  created.RootElement.GetProperty("source_session_id").GetString() == WolfApi.SessionId,
+                "co-op creation identifies the automatic GPU launcher");
+            _main.TopLayer.GetChildren().OfType<QuestionDialogue>().Single()
+                .GetNode<Container>("%ButtonContainer").GetChild<Button>(0)
+                .EmitSignal(Button.SignalName.Pressed);
+            await Wait(() => !_main.TopLayer.GetChildren().OfType<QuestionDialogue>().Any(), "co-op failure dismissed");
+            Check(Tile.MenuButtonCoop.Disabled, "existing co-op app cannot be launched twice");
+
+            SetState(Array.Empty<object>());
+            var lobbyList = _main.FindChildren("*", "", true, false).OfType<LobbiesContainer>().Single();
+            var entries = lobbyList.GetNode<Container>("%Lobbies");
+            Task RefreshLobbies() => (Task)typeof(LobbiesContainer).GetMethod("RefreshLobbies",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(lobbyList, null)!;
+            var shared = new { id = "shared-test", name = "Shared", started_by_profile_id = "alice",
+                multi_user = true, connected_sessions = new[] { "a", "b" } };
+            SetState(new[] { shared });
+            await RefreshLobbies();
+            await Wait(() => entries.GetChildCount() == 1, "lobby snapshot arrived");
+            Check(entries.GetChildCount() == 1, "lobby snapshot recovers a missed creation event");
+            ApiEvent("CreateLobbyEvent", shared);
+            Check(entries.GetChildCount() == 1, "duplicate lobby events keep one entry");
+            Check(entries.GetChild<WolfUI.Lobby>(0).GetNode<Label>("%PlayerCountLabel").Text == "2",
+                "lobby snapshot restores the actual player count");
+            ApiEvent("JoinLobbyEvent", new { profile_id = "guest", lobby_id = "shared-test", moonlight_session_id = "c" });
+            Check(entries.GetChild<WolfUI.Lobby>(0).GetNode<Label>("%PlayerCountLabel").Text == "3",
+                "membership events read the lobby ID regardless of field order");
+            ApiEvent("LeaveLobbyEvent", new { lobby_id = "shared-test", moonlight_session_id = "c" });
+            Check(entries.GetChild<WolfUI.Lobby>(0).GetNode<Label>("%PlayerCountLabel").Text == "2",
+                "leave events update the shared lobby count");
+            SetState(Array.Empty<object>(), fail: true);
+            await RefreshLobbies();
+            Check(entries.GetChildCount() == 1, "failed lobby snapshot preserves the visible lobby");
+            SetState(Array.Empty<object>());
+            await RefreshLobbies();
+            await Wait(() => entries.GetChildCount() == 0, "empty lobby snapshot arrived");
+            Check(entries.GetChildCount() == 0, "lobby snapshot clears a missed stop event");
+            await ToSignal(GetTree().CreateTimer(0.05), SceneTreeTimer.SignalName.Timeout);
+            ApiEvent("JoinLobbyEvent", new { lobby_id = "shared-test" });
+            ApiEvent("LeaveLobbyEvent", new { lobby_id = "shared-test" });
+            Check(entries.GetChildCount() == 0, "removed lobby widgets unsubscribe from membership events");
             GD.Print($"PASS: {_checks} running-app status checks");
             GetTree().Quit();
         }
