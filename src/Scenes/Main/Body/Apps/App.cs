@@ -405,7 +405,7 @@ public partial class App : MarginContainer, IRestorable<App>
 				(Main.Singleton.AppList as AppList)?.InvalidateLobbySnapshot();
 				SetRunningLobby(lobby);
                 var pin = lobby.MultiUser && lobby.IsPinLocked ? await PinInput.RequestPin() : null;
-                if (lobby.MultiUser && lobby.IsPinLocked && pin is null) return;
+                if (lobby.MultiUser && lobby.IsPinLocked && (pin is null || pin.Count == 0)) return;
                 var response = await WolfApi.JoinLobby(lobbyId, WolfApi.SessionId, pin, target.DisplayId);
 				if (response is null || !response.Success)
 				{
@@ -513,6 +513,7 @@ public partial class App : MarginContainer, IRestorable<App>
 			))
 			{
 				var pin = await PinInput.RequestPin();
+                if (pin.Count == 0) return;
 				lobby.Pin = pin;
 			}
 

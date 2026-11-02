@@ -148,6 +148,20 @@ public partial class RunningAppStatusChecks : Node
                 .SequenceEqual(new[] { 2, 4, 6, 8 }),
             "shared lobby PIN dialog forwards the entered fixture PIN");
         await Wait(() => !_main.TopLayer.GetChildren().OfType<PinInput>().Any(), "shared PIN dialog closed");
+        File.Delete(_fixture + "/joined.json");
+        tile.GetNode<Button>("%JoinButton").EmitSignal(Button.SignalName.Pressed);
+        await CancelPin();
+        await Wait(() => !tile.GetNode<Button>("%JoinButton").Disabled, "canceled shared join released its button");
+        Check(!File.Exists(_fixture + "/joined.json"), "canceling a shared lobby PIN does not submit a join");
+    }
+
+    private async Task CancelPin()
+    {
+        await Wait(() => _main.TopLayer.GetChildren().OfType<PinInput>().Any(), "PIN input shown for cancellation");
+        _main.TopLayer.GetChildren().OfType<PinInput>().Single()
+            .GetNode<Button>("PanelContainer/MarginContainer/VBoxContainer/HBoxContainer/ButtonCancel")
+            .EmitSignal(Button.SignalName.Pressed);
+        await Wait(() => !_main.TopLayer.GetChildren().OfType<PinInput>().Any(), "canceled PIN input closed");
     }
 
     private async Task SelectProfile(string id)
@@ -300,6 +314,29 @@ public partial class RunningAppStatusChecks : Node
             ApiEvent("JoinLobbyEvent", new { lobby_id = "shared-test" });
             ApiEvent("LeaveLobbyEvent", new { lobby_id = "shared-test" });
             Check(entries.GetChildCount() == 0, "removed lobby widgets unsubscribe from membership events");
+            SetState(new object[] { new { id = "owned-locked-steam", name = "Steam", started_by_profile_id = "alice",
+                runner_state_folder = "profile-data/alice/WolfSteam", multi_user = true, pin_required = true } });
+            await Refresh();
+            await Wait(() => Tile.MenuButtonStart.Text == "Connect", "owned shared app restored for PIN cancellation");
+            File.Delete(_fixture + "/joined.json");
+            Tile.MenuButtonStart.EmitSignal(Button.SignalName.Pressed);
+            await CancelPin();
+            await Wait(() => !Tile.MenuButtonStart.Disabled, "canceled app join released its button");
+            Check(!File.Exists(_fixture + "/joined.json"), "canceling the app tile's shared PIN does not join");
+
+            SetState(Array.Empty<object>());
+            await Refresh();
+            await Wait(() => !Tile.MenuButtonCoop.Disabled, "empty snapshot allows a new co-op app");
+            File.Delete(_fixture + "/created.json");
+            Tile.MenuButtonCoop.EmitSignal(Button.SignalName.Pressed);
+            await Wait(() => _main.TopLayer.GetChildren().OfType<QuestionDialogue>().Any(), "co-op PIN choice shown for cancellation");
+            _main.TopLayer.GetChildren().OfType<QuestionDialogue>().Single()
+                .GetNode<Container>("%ButtonContainer").GetChildren().OfType<Button>().Single(button => button.Text == "Yes")
+                .EmitSignal(Button.SignalName.Pressed);
+            await CancelPin();
+            await Wait(() => !Tile.MenuButtonCoop.Disabled, "canceled co-op creation released its button");
+            Check(!File.Exists(_fixture + "/created.json"), "canceling a co-op PIN does not create an empty-PIN lobby");
+
             GD.Print($"PASS: {_checks} running-app status checks");
             GetTree().Quit();
         }

@@ -116,6 +116,7 @@ public partial class Lobby : Control
             if (_lobby.IsPinLocked)
             {
                 pin = await PinInput.RequestPin();
+                if (pin.Count == 0) return;
             }
 
             var error = await WolfApi.JoinLobby(Name, WolfApi.SessionId, pin, target.DisplayId);
