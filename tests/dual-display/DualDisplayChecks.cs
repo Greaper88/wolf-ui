@@ -205,6 +205,8 @@ public partial class DualDisplayChecks : Node
             };
             State(nativeAssignments, nativeApps.Cast<object>().ToArray());
             await ((AppList)_main.AppList).RefreshRunningApps();
+            await Wait(() => Tile("Steam").MenuButtonStart.Text == "Connect" && Tile("Kodi").MenuButtonStart.Text == "Connect",
+                "native app snapshot reconciled after any previous pending refresh");
             Check(Tile("Steam").MenuButtonStart.Text == "Connect" && Tile("Kodi").MenuButtonStart.Text == "Connect",
                 "native-started apps are recognized as the existing persistent apps");
             Check(DualDisplayLauncher.TargetLabel(nativeAssignments, nativeAssignments.Displays[0], nativeApps).Contains("Replace Steam") &&
